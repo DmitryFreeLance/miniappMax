@@ -33,6 +33,7 @@
         <button class="tab" data-tab="fix-price">Fix Price 🔥</button>
         <button class="tab" data-tab="info">Общая информация</button>
         <button class="tab hidden" data-tab="admin" id="adminTabBtn">Админка</button>
+        <button class="tab hidden" data-tab="admin-orders" id="adminOrdersTabBtn">Заказы</button>
     </nav>
 
     <main>
@@ -65,7 +66,7 @@
         <section id="admin" class="tab-content">
             <div class="section-head">
                 <h2>Админ-панель</h2>
-                <p>Управление товарами, пользователями и заказами.</p>
+                <p>Управление каталогом, постами, ролями и пользователями.</p>
             </div>
 
             <div class="admin-grid">
@@ -110,6 +111,20 @@
                     </form>
                 </article>
 
+                <article class="panel wide">
+                    <h3>Управление товарами</h3>
+                    <div class="manage-columns">
+                        <section>
+                            <h4>Каталог</h4>
+                            <div id="adminCatalogProducts" class="manage-list"></div>
+                        </section>
+                        <section>
+                            <h4>Fix Price 🔥</h4>
+                            <div id="adminFixPriceProducts" class="manage-list"></div>
+                        </section>
+                    </div>
+                </article>
+
                 <article class="panel">
                     <h3>Новый пост</h3>
                     <form id="postForm">
@@ -121,6 +136,11 @@
                         </label>
                         <button type="submit">Опубликовать</button>
                     </form>
+                </article>
+
+                <article class="panel">
+                    <h3>Управление постами</h3>
+                    <div id="adminPostsList" class="manage-list"></div>
                 </article>
 
                 <article class="panel">
@@ -136,12 +156,16 @@
                     <h3>Пользователи</h3>
                     <div id="usersList" class="mini-list"></div>
                 </article>
-
-                <article class="panel wide">
-                    <h3>Заказы</h3>
-                    <div id="ordersList" class="mini-list"></div>
-                </article>
             </div>
+        </section>
+
+        <section id="admin-orders" class="tab-content">
+            <div class="section-head">
+                <h2>Заказы</h2>
+                <p>Полная информация по оформленным заказам, включая контакты и адрес.</p>
+            </div>
+            <div id="adminOrdersGrid" class="orders-grid"></div>
+            <div id="adminOrdersEmpty" class="empty hidden">Заказов пока нет.</div>
         </section>
     </main>
 </div>

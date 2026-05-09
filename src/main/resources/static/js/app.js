@@ -14,6 +14,7 @@ const el = {
     tabs: document.querySelectorAll(".tab"),
     tabContents: document.querySelectorAll(".tab-content"),
     adminTabBtn: document.getElementById("adminTabBtn"),
+    adminOrdersTabBtn: document.getElementById("adminOrdersTabBtn"),
     userStatusBadge: document.getElementById("userStatusBadge"),
     userNameText: document.getElementById("userNameText"),
     userHint: document.getElementById("userHint"),
@@ -23,6 +24,12 @@ const el = {
     fixPriceGrid: document.getElementById("fixPriceGrid"),
     fixPriceEmpty: document.getElementById("fixPriceEmpty"),
     infoPosts: document.getElementById("infoPosts"),
+
+    adminCatalogProducts: document.getElementById("adminCatalogProducts"),
+    adminFixPriceProducts: document.getElementById("adminFixPriceProducts"),
+    adminPostsList: document.getElementById("adminPostsList"),
+    adminOrdersGrid: document.getElementById("adminOrdersGrid"),
+    adminOrdersEmpty: document.getElementById("adminOrdersEmpty"),
 
     productModal: document.getElementById("productModal"),
     closeProductModal: document.getElementById("closeProductModal"),
@@ -60,8 +67,7 @@ const el = {
     postForm: document.getElementById("postForm"),
     addAdminForm: document.getElementById("addAdminForm"),
     adminsList: document.getElementById("adminsList"),
-    usersList: document.getElementById("usersList"),
-    ordersList: document.getElementById("ordersList")
+    usersList: document.getElementById("usersList")
 };
 
 function notify(message) {
@@ -74,6 +80,62 @@ function money(value) {
 
 function unitLabel(unit) {
     return unit === "PCS" ? "шт" : "куб.м";
+}
+
+function unitModeLabel(unitMode) {
+    if (unitMode === "PCS_ONLY") {
+        return "только шт";
+    }
+    if (unitMode === "CUBIC_ONLY") {
+        return "только куб.м";
+    }
+    return "шт + куб.м";
+}
+
+function orderStatusLabel(status) {
+    if (status === "PAID") {
+        return "Оплачен";
+    }
+    if (status === "CANCELED") {
+        return "Отменен";
+    }
+    if (status === "FAILED") {
+        return "Ошибка оплаты";
+    }
+    if (status === "PENDING_PAYMENT") {
+        return "Ожидает оплату";
+    }
+    return "Создан";
+}
+
+function orderStatusClass(status) {
+    if (status === "PAID") {
+        return "paid";
+    }
+    if (status === "CANCELED" || status === "FAILED") {
+        return "cancelled";
+    }
+    return "";
+}
+
+function formatDateTime(value) {
+    if (!value) {
+        return "-";
+    }
+    return new Date(value).toLocaleString("ru-RU");
+}
+
+function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (char) => {
+        const entities = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        };
+        return entities[char] || char;
+    });
 }
 
 function api(path, options = {}) {
@@ -167,14 +229,16 @@ function updateIdentityUi() {
     el.userStatusBadge.textContent = state.isAdmin ? "Вы админ" : "Авторизовано в MAX";
     el.userNameText.textContent = state.userFullName ? state.userFullName : "Профиль MAX подключен";
     el.userHint.textContent = state.isAdmin
-        ? "Доступны клиентские и админские функции." : "Доступно оформление заказа и просмотр каталога.";
+        ? "Доступны клиентские и админские функции."
+        : "Доступно оформление заказа и просмотр каталога.";
 }
 
 function setAdminVisibility() {
     el.adminTabBtn.classList.toggle("hidden", !state.isAdmin);
+    el.adminOrdersTabBtn.classList.toggle("hidden", !state.isAdmin);
 
-    const activeAdmin = document.querySelector(".tab.active")?.dataset?.tab === "admin";
-    if (!state.isAdmin && activeAdmin) {
+    const activeTab = document.querySelector(".tab.active")?.dataset?.tab;
+    if (!state.isAdmin && (activeTab === "admin" || activeTab === "admin-orders")) {
         switchTab("catalog");
     }
 }
@@ -192,13 +256,17 @@ function switchTab(tabId) {
     if (tabId === "admin" && state.isAdmin) {
         loadAdminData();
     }
+
+    if (tabId === "admin-orders" && state.isAdmin) {
+        loadAdminOrders();
+    }
 }
 
 function initTabs() {
     el.tabs.forEach((btn) => {
         btn.addEventListener("click", () => {
             const target = btn.dataset.tab;
-            if (target === "admin" && !state.isAdmin) {
+            if ((target === "admin" || target === "admin-orders") && !state.isAdmin) {
                 notify("Раздел доступен только администраторам.");
                 return;
             }
@@ -246,10 +314,10 @@ function renderProducts(items, targetGrid, targetEmpty) {
             : "";
 
         card.innerHTML = `
-            <img src="${product.imageUrl}" alt="${product.name}">
+            <img src="${escapeHtml(product.imageUrl)}" alt="${escapeHtml(product.name)}">
             <div class="card-body">
                 ${badgeHtml}
-                <h4>${product.name}</h4>
+                <h4>${escapeHtml(product.name)}</h4>
                 ${oldPriceHtml}
                 <div class="price">${money(product.price)}</div>
             </div>
@@ -284,11 +352,19 @@ async function loadInfo() {
     posts.forEach((post) => {
         const node = document.createElement("article");
         node.className = "post";
-        node.innerHTML = `
-            <h4>${post.title}</h4>
-            <p>${post.content}</p>
-            <small>${new Date(post.createdAt).toLocaleString("ru-RU")}</small>
-        `;
+
+        const title = document.createElement("h4");
+        title.textContent = post.title;
+
+        const content = document.createElement("p");
+        content.textContent = post.content;
+
+        const date = document.createElement("small");
+        date.textContent = formatDateTime(post.createdAt);
+
+        node.appendChild(title);
+        node.appendChild(content);
+        node.appendChild(date);
         el.infoPosts.appendChild(node);
     });
 }
@@ -424,8 +500,107 @@ function initOrderFlow() {
 
 function renderSimpleList(node, rows) {
     node.innerHTML = rows.length
-        ? rows.map((row) => `<div class=\"list-row\">${row}</div>`).join("")
+        ? rows.map((row) => `<div class=\"list-row\">${escapeHtml(row)}</div>`).join("")
         : '<div class="list-row">Нет данных</div>';
+}
+
+function renderAdminProducts(products) {
+    const catalogProducts = products.filter((item) => !item.fixPrice);
+    const fixPriceProducts = products.filter((item) => item.fixPrice);
+
+    const renderGroup = (items, targetNode) => {
+        if (!items.length) {
+            targetNode.innerHTML = '<div class="empty">Товаров нет.</div>';
+            return;
+        }
+
+        targetNode.innerHTML = items.map((item) => {
+            const oldPriceText = item.fixPrice && item.oldPrice
+                ? ` · было ${money(item.oldPrice)}`
+                : "";
+            const activeTag = item.active ? "" : '<span class="tag off">скрыт</span>';
+            const typeTag = item.fixPrice ? '<span class="tag fix">Fix Price</span>' : '<span class="tag catalog">Каталог</span>';
+            return `
+                <article class="manage-item">
+                    <div class="manage-meta">
+                        <p class="manage-title">${escapeHtml(item.name)}</p>
+                        <p class="manage-sub">${money(item.price)}${escapeHtml(oldPriceText)}</p>
+                        <div class="manage-badges">
+                            ${typeTag}
+                            ${activeTag}
+                            <span class="tag catalog">${escapeHtml(unitModeLabel(item.unitMode))}</span>
+                        </div>
+                    </div>
+                    <button class="btn-inline btn-danger js-delete-product" data-id="${item.id}" data-name="${escapeHtml(item.name)}">
+                        Удалить
+                    </button>
+                </article>
+            `;
+        }).join("");
+    };
+
+    renderGroup(catalogProducts, el.adminCatalogProducts);
+    renderGroup(fixPriceProducts, el.adminFixPriceProducts);
+
+    document.querySelectorAll(".js-delete-product").forEach((button) => {
+        button.addEventListener("click", async () => {
+            const productId = Number(button.dataset.id);
+            const productName = button.dataset.name || "товар";
+            const confirmed = window.confirm(`Удалить «${productName}»?`);
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                const result = await api(`/api/admin/products/${productId}`, {method: "DELETE"});
+                notify(result.message || "Товар удален");
+                await Promise.all([loadCatalog(), loadFixPrice(), loadAdminData(), loadAdminOrders()]);
+            } catch (error) {
+                notify(error.message);
+            }
+        });
+    });
+}
+
+function renderAdminPosts(posts) {
+    if (!posts.length) {
+        el.adminPostsList.innerHTML = '<div class="empty">Постов пока нет.</div>';
+        return;
+    }
+
+    el.adminPostsList.innerHTML = posts.map((post) => `
+        <article class="manage-item">
+            <div class="manage-meta">
+                <p class="manage-title">${escapeHtml(post.title)}</p>
+                <p class="manage-sub">${escapeHtml(post.content)}</p>
+                <div class="manage-badges">
+                    <span class="tag catalog">${escapeHtml(formatDateTime(post.createdAt))}</span>
+                </div>
+            </div>
+            <button class="btn-inline btn-danger js-delete-post" data-id="${post.id}" data-title="${escapeHtml(post.title)}">
+                Удалить
+            </button>
+        </article>
+    `).join("");
+
+    document.querySelectorAll(".js-delete-post").forEach((button) => {
+        button.addEventListener("click", async () => {
+            const postId = Number(button.dataset.id);
+            const postTitle = button.dataset.title || "пост";
+            const confirmed = window.confirm(`Удалить пост «${postTitle}»?`);
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                const result = await api(`/api/admin/info-posts/${postId}`, {method: "DELETE"});
+                notify(result.message || "Пост удален");
+                await Promise.all([loadInfo(), loadAdminData()]);
+            } catch (error) {
+                notify(error.message);
+            }
+        });
+    });
 }
 
 async function loadAdminData() {
@@ -434,10 +609,11 @@ async function loadAdminData() {
     }
 
     try {
-        const [admins, users, orders] = await Promise.all([
+        const [admins, users, products, posts] = await Promise.all([
             api("/api/admin/admins"),
             api("/api/admin/users"),
-            api("/api/admin/orders")
+            api("/api/admin/products"),
+            api("/api/admin/info-posts")
         ]);
 
         renderSimpleList(
@@ -450,14 +626,85 @@ async function loadAdminData() {
             users.map((item) => `ID ${item.maxUserId} | ${item.phone || "телефон не указан"} | ${item.admin ? "admin" : "user"}`)
         );
 
-        renderSimpleList(
-            el.ordersList,
-            orders.map((item) => `#${item.id} | ${item.productName} | ${item.quantity} ${unitLabel(item.quantityUnit)} | ${money(item.totalPrice)} | ${item.status}`)
-        );
+        renderAdminProducts(products);
+        renderAdminPosts(posts);
     } catch (error) {
         renderSimpleList(el.adminsList, [`Ошибка: ${error.message}`]);
         renderSimpleList(el.usersList, []);
-        renderSimpleList(el.ordersList, []);
+        el.adminCatalogProducts.innerHTML = '<div class="empty">Ошибка загрузки товаров</div>';
+        el.adminFixPriceProducts.innerHTML = '<div class="empty">Ошибка загрузки товаров</div>';
+        el.adminPostsList.innerHTML = '<div class="empty">Ошибка загрузки постов</div>';
+    }
+}
+
+function renderAdminOrders(orders) {
+    el.adminOrdersEmpty.textContent = "Заказов пока нет.";
+    el.adminOrdersGrid.innerHTML = "";
+
+    if (!orders.length) {
+        el.adminOrdersEmpty.classList.remove("hidden");
+        return;
+    }
+
+    el.adminOrdersEmpty.classList.add("hidden");
+
+    const markup = orders.map((order) => {
+        const statusClass = orderStatusClass(order.status);
+        return `
+            <article class="order-card">
+                <div class="order-head">
+                    <h3 class="order-title">#${order.id} · ${escapeHtml(order.productName)}</h3>
+                    <span class="order-status ${statusClass}">${escapeHtml(orderStatusLabel(order.status))}</span>
+                </div>
+                <div class="order-head">
+                    <span class="order-time">Создан: ${escapeHtml(formatDateTime(order.createdAt))}</span>
+                    <span class="order-time">MAX ID: ${escapeHtml(order.maxUserId)}</span>
+                </div>
+                <div class="order-grid">
+                    <div class="order-cell">
+                        <p class="order-label">Количество</p>
+                        <p class="order-value">${escapeHtml(order.quantity)} ${escapeHtml(unitLabel(order.quantityUnit))}</p>
+                    </div>
+                    <div class="order-cell">
+                        <p class="order-label">Сумма</p>
+                        <p class="order-value">${escapeHtml(money(order.totalPrice))}</p>
+                    </div>
+                    <div class="order-cell">
+                        <p class="order-label">ФИО</p>
+                        <p class="order-value">${escapeHtml(order.fullName)}</p>
+                    </div>
+                    <div class="order-cell">
+                        <p class="order-label">Телефон</p>
+                        <p class="order-value">${escapeHtml(order.phone)}</p>
+                    </div>
+                    <div class="order-cell">
+                        <p class="order-label">Адрес доставки</p>
+                        <p class="order-value">${escapeHtml(order.address)}</p>
+                    </div>
+                    <div class="order-cell">
+                        <p class="order-label">Оплата</p>
+                        <p class="order-value">${escapeHtml(order.paymentId || "ожидается")}</p>
+                    </div>
+                </div>
+            </article>
+        `;
+    }).join("");
+
+    el.adminOrdersGrid.innerHTML = markup;
+}
+
+async function loadAdminOrders() {
+    if (!state.isAdmin) {
+        return;
+    }
+
+    try {
+        const orders = await api("/api/admin/orders");
+        renderAdminOrders(orders);
+    } catch (error) {
+        el.adminOrdersEmpty.classList.remove("hidden");
+        el.adminOrdersEmpty.textContent = `Ошибка: ${error.message}`;
+        el.adminOrdersGrid.innerHTML = "";
     }
 }
 
@@ -611,7 +858,7 @@ function initAdminForms() {
 
             notify("Пост опубликован");
             el.postForm.reset();
-            await loadInfo();
+            await Promise.all([loadInfo(), loadAdminData()]);
         } catch (error) {
             notify(error.message);
         }

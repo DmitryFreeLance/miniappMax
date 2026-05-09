@@ -10,4 +10,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findAllByOrderByCreatedAtDesc();
 
     Optional<Order> findByPaymentId(String paymentId);
+
+    boolean existsByProductId(Long productId);
 }

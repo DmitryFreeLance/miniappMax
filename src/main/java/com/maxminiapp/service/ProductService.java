@@ -7,6 +7,7 @@ import com.maxminiapp.enums.UnitMode;
 import com.maxminiapp.exception.BadRequestException;
 import com.maxminiapp.exception.NotFoundException;
 import com.maxminiapp.model.Product;
+import com.maxminiapp.repository.OrderRepository;
 import com.maxminiapp.repository.ProductRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,9 +19,11 @@ import java.util.List;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final OrderRepository orderRepository;
 
-    public ProductService(ProductRepository productRepository) {
+    public ProductService(ProductRepository productRepository, OrderRepository orderRepository) {
         this.productRepository = productRepository;
+        this.orderRepository = orderRepository;
     }
 
     public List<ProductResponse> getCatalog() {
@@ -64,6 +67,20 @@ public class ProductService {
         Product product = getByIdOrThrow(id);
         applyRequest(product, request);
         return toResponse(productRepository.save(product));
+    }
+
+    @Transactional
+    public String deleteForAdmin(Long id) {
+        Product product = getByIdOrThrow(id);
+
+        if (orderRepository.existsByProductId(product.getId())) {
+            product.setActive(false);
+            productRepository.save(product);
+            return "У товара уже есть заказы. Товар скрыт из каталога и Fix Price.";
+        }
+
+        productRepository.delete(product);
+        return "Товар удален.";
     }
 
     private void applyRequest(Product product, AdminCreateProductRequest request) {

@@ -65,6 +65,16 @@ public class AdminController {
         return productService.getAllForAdmin();
     }
 
+    @DeleteMapping("/products/{id}")
+    public ActionResponse deleteProduct(
+            @RequestHeader(name = "X-User-Id", required = false) Long adminUserId,
+            @PathVariable Long id
+    ) {
+        requireAdmin(adminUserId);
+        String message = productService.deleteForAdmin(id);
+        return new ActionResponse(message);
+    }
+
     @PostMapping("/products")
     public ProductResponse createProduct(
             @RequestHeader(name = "X-User-Id", required = false) Long adminUserId,
@@ -109,6 +119,22 @@ public class AdminController {
     ) {
         requireAdmin(adminUserId);
         return infoPostService.create(request, adminUserId);
+    }
+
+    @GetMapping("/info-posts")
+    public List<InfoPostResponse> infoPosts(@RequestHeader(name = "X-User-Id", required = false) Long adminUserId) {
+        requireAdmin(adminUserId);
+        return infoPostService.getAll();
+    }
+
+    @DeleteMapping("/info-posts/{id}")
+    public ActionResponse deleteInfoPost(
+            @RequestHeader(name = "X-User-Id", required = false) Long adminUserId,
+            @PathVariable Long id
+    ) {
+        requireAdmin(adminUserId);
+        infoPostService.deleteById(id);
+        return new ActionResponse("Пост удален.");
     }
 
     @PostMapping(value = "/uploads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

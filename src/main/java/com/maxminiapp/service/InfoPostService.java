@@ -2,6 +2,7 @@ package com.maxminiapp.service;
 
 import com.maxminiapp.dto.AdminCreateInfoPostRequest;
 import com.maxminiapp.dto.InfoPostResponse;
+import com.maxminiapp.exception.NotFoundException;
 import com.maxminiapp.model.InfoPost;
 import com.maxminiapp.repository.InfoPostRepository;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,14 @@ public class InfoPostService {
         post.setContent(request.getContent().trim());
         post.setCreatedByAdminId(adminUserId);
         return toResponse(infoPostRepository.save(post));
+    }
+
+    @Transactional
+    public void deleteById(Long id) {
+        if (!infoPostRepository.existsById(id)) {
+            throw new NotFoundException("Пост не найден");
+        }
+        infoPostRepository.deleteById(id);
     }
 
     private InfoPostResponse toResponse(InfoPost post) {
