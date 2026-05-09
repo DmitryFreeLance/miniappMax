@@ -680,6 +680,11 @@ button:hover {
     margin: 10px 0 14px;
 }
 
+.stock-line {
+    margin: 0 0 14px;
+    color: #2a4a55;
+}
+
 .old-price-line {
     margin: 10px 0 4px;
     color: #8a9490;

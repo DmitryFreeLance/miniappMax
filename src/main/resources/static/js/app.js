@@ -54,6 +54,7 @@ const el = {
     modalOldPriceLine: document.getElementById("modalOldPriceLine"),
     modalOldPrice: document.getElementById("modalOldPrice"),
     modalPrice: document.getElementById("modalPrice"),
+    modalStock: document.getElementById("modalStock"),
 
     orderBtn: document.getElementById("orderBtn"),
     orderModal: document.getElementById("orderModal"),
@@ -266,6 +267,27 @@ function formatDateTime(value) {
         return "-";
     }
     return new Date(value).toLocaleString("ru-RU");
+}
+
+function formatStockValue(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return "0";
+    }
+    return numeric.toLocaleString("ru-RU", {minimumFractionDigits: 0, maximumFractionDigits: 3});
+}
+
+function getStockSummaryText(product) {
+    const stockPcs = formatStockValue(product.stockPcs);
+    const stockCubic = formatStockValue(product.stockCubicMeters);
+
+    if (product.unitMode === "PCS_ONLY") {
+        return `${stockPcs} шт`;
+    }
+    if (product.unitMode === "CUBIC_ONLY") {
+        return `${stockCubic} куб.м`;
+    }
+    return `${stockPcs} шт · ${stockCubic} куб.м`;
 }
 
 function getDiscountPercent(product) {
@@ -637,6 +659,7 @@ function openProduct(product) {
     el.modalTitle.textContent = product.name;
     el.modalDescription.textContent = product.description;
     el.modalPrice.textContent = getPriceSummaryText(product);
+    el.modalStock.textContent = getStockSummaryText(product);
 
     if (product.fixPrice && product.oldPrice) {
         el.modalOldPriceLine.classList.remove("hidden");
