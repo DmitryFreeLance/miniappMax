@@ -21,6 +21,11 @@ spring:
     multipart:
       max-file-size: ${APP_MAX_FILE_SIZE:20MB}
       max-request-size: ${APP_MAX_REQUEST_SIZE:20MB}
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-store: true
 
 app:
   public-base-url: ${APP_PUBLIC_BASE_URL:http://localhost:8080}
