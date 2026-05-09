@@ -45,7 +45,7 @@ public class ProductService {
     }
 
     public List<ProductResponse> getAllForAdmin() {
-        return productRepository.findAllByOrderByCreatedAtDesc().stream()
+        return productRepository.findByActiveTrueOrderByCreatedAtDesc().stream()
                 .map(this::toResponse)
                 .toList();
     }

@@ -16,16 +16,8 @@
 
 <div class="layout">
     <header class="topbar">
-        <div class="brand">
-            <p class="brand-badge">Mini App</p>
-            <h1>СтройМаркет</h1>
-            <p class="brand-sub">Каталог стройматериалов, заказы и админка</p>
-        </div>
-        <aside class="profile-card">
-            <p id="userStatusBadge" class="status-pill">Подключение...</p>
-            <h3 id="userNameText">Пользователь MAX</h3>
-            <p id="userHint">Откройте мини-апп из клиента MAX для полной функциональности.</p>
-        </aside>
+        <h1>СтройМаркет</h1>
+        <p>Материалы с доставкой. Каталог и оформление заказа в пару кликов.</p>
     </header>
 
     <nav class="tabs" id="tabsNav">
@@ -38,18 +30,32 @@
 
     <main>
         <section id="catalog" class="tab-content active">
-            <div class="section-head">
-                <h2>Каталог</h2>
-                <p>Выберите материал, откройте карточку и оформите заказ.</p>
+            <div class="shop-head">
+                <div class="shop-toolbar">
+                    <button class="shop-back" id="catalogBackBtn" type="button" aria-label="Назад">←</button>
+                    <div class="shop-search-wrap">
+                        <input id="catalogSearchInput" class="shop-search-input" type="text" placeholder="Поиск товаров"/>
+                        <button id="catalogSearchClear" class="shop-search-clear" type="button" aria-label="Очистить поиск">×</button>
+                    </div>
+                    <button class="shop-filter" id="catalogFilterBtn" type="button" aria-label="Фильтр">⚙</button>
+                </div>
+                <h2 class="shop-caption">Каталог</h2>
             </div>
             <div id="catalogGrid" class="catalog-grid"></div>
             <div id="catalogEmpty" class="empty hidden">Товаров пока нет.</div>
         </section>
 
         <section id="fix-price" class="tab-content">
-            <div class="section-head">
-                <h2>Fix Price 🔥</h2>
-                <p>Товары со скидкой и ограниченным предложением.</p>
+            <div class="shop-head">
+                <div class="shop-toolbar">
+                    <button class="shop-back" id="fixBackBtn" type="button" aria-label="Назад">←</button>
+                    <div class="shop-search-wrap">
+                        <input id="fixSearchInput" class="shop-search-input" type="text" placeholder="Поиск в Fix Price"/>
+                        <button id="fixSearchClear" class="shop-search-clear" type="button" aria-label="Очистить поиск">×</button>
+                    </div>
+                    <button class="shop-filter" id="fixFilterBtn" type="button" aria-label="Фильтр">⚙</button>
+                </div>
+                <h2 class="shop-caption">Fix Price 🔥</h2>
             </div>
             <div id="fixPriceGrid" class="catalog-grid"></div>
             <div id="fixPriceEmpty" class="empty hidden">Товаров со скидкой пока нет.</div>

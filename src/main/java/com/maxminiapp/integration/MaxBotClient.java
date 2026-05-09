@@ -30,6 +30,16 @@ public class MaxBotClient {
         return properties.getMax().getToken() != null && !properties.getMax().getToken().isBlank();
     }
 
+    public void sendTextMessage(Long userId, String text) {
+        if (!isConfigured()) {
+            log.warn("MAX token is not configured, skip sending message");
+            return;
+        }
+
+        Map<String, Object> payload = Map.of("text", text);
+        sendMessage(userId, payload);
+    }
+
     public void sendMiniAppMessage(Long userId, String text, String miniAppUrl) {
         if (!isConfigured()) {
             log.warn("MAX token is not configured, skip sending message");
@@ -63,13 +73,7 @@ public class MaxBotClient {
                 )
         );
 
-        restClient.post()
-                .uri(uriBuilder -> uriBuilder.path("/messages").queryParam("user_id", userId).build())
-                .header(HttpHeaders.AUTHORIZATION, properties.getMax().getToken())
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(payload)
-                .retrieve()
-                .toBodilessEntity();
+        sendMessage(userId, payload);
     }
 
     public void subscribeWebhook(String webhookUrl, String secret) {
@@ -94,6 +98,16 @@ public class MaxBotClient {
 
         restClient.post()
                 .uri("/subscriptions")
+                .header(HttpHeaders.AUTHORIZATION, properties.getMax().getToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(payload)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    private void sendMessage(Long userId, Map<String, Object> payload) {
+        restClient.post()
+                .uri(uriBuilder -> uriBuilder.path("/messages").queryParam("user_id", userId).build())
                 .header(HttpHeaders.AUTHORIZATION, properties.getMax().getToken())
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(payload)

@@ -5,6 +5,10 @@ const state = {
     userFullName: null,
     products: [],
     fixPriceProducts: [],
+    catalogQuery: "",
+    fixPriceQuery: "",
+    catalogOnlyAvailable: false,
+    fixOnlyAvailable: false,
     selectedProduct: null,
     orderQuantity: null,
     orderUnit: "PCS"
@@ -15,14 +19,19 @@ const el = {
     tabContents: document.querySelectorAll(".tab-content"),
     adminTabBtn: document.getElementById("adminTabBtn"),
     adminOrdersTabBtn: document.getElementById("adminOrdersTabBtn"),
-    userStatusBadge: document.getElementById("userStatusBadge"),
-    userNameText: document.getElementById("userNameText"),
-    userHint: document.getElementById("userHint"),
 
     catalogGrid: document.getElementById("catalogGrid"),
     catalogEmpty: document.getElementById("catalogEmpty"),
     fixPriceGrid: document.getElementById("fixPriceGrid"),
     fixPriceEmpty: document.getElementById("fixPriceEmpty"),
+    catalogBackBtn: document.getElementById("catalogBackBtn"),
+    catalogSearchInput: document.getElementById("catalogSearchInput"),
+    catalogSearchClear: document.getElementById("catalogSearchClear"),
+    catalogFilterBtn: document.getElementById("catalogFilterBtn"),
+    fixBackBtn: document.getElementById("fixBackBtn"),
+    fixSearchInput: document.getElementById("fixSearchInput"),
+    fixSearchClear: document.getElementById("fixSearchClear"),
+    fixFilterBtn: document.getElementById("fixFilterBtn"),
     infoPosts: document.getElementById("infoPosts"),
 
     adminCatalogProducts: document.getElementById("adminCatalogProducts"),
@@ -125,6 +134,43 @@ function formatDateTime(value) {
     return new Date(value).toLocaleString("ru-RU");
 }
 
+function getDiscountPercent(product) {
+    if (!product?.oldPrice || Number(product.oldPrice) <= Number(product.price)) {
+        return null;
+    }
+    return Math.round((1 - Number(product.price) / Number(product.oldPrice)) * 100);
+}
+
+function hasAvailableStock(product) {
+    const pcs = Number(product.stockPcs || 0);
+    const cubic = Number(product.stockCubicMeters || 0);
+
+    if (product.unitMode === "PCS_ONLY") {
+        return pcs > 0;
+    }
+
+    if (product.unitMode === "CUBIC_ONLY") {
+        return cubic > 0;
+    }
+
+    return pcs > 0 || cubic > 0;
+}
+
+function applyCatalogFilters(items, query, onlyAvailable) {
+    const normalized = (query || "").trim().toLowerCase();
+    return items.filter((product) => {
+        const text = `${product.name || ""} ${product.description || ""}`.toLowerCase();
+        const passQuery = !normalized || text.includes(normalized);
+        const passAvailable = !onlyAvailable || hasAvailableStock(product);
+        return passQuery && passAvailable;
+    });
+}
+
+function updateFilterButtonsState() {
+    el.catalogFilterBtn.classList.toggle("active", state.catalogOnlyAvailable);
+    el.fixFilterBtn.classList.toggle("active", state.fixOnlyAvailable);
+}
+
 function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, (char) => {
         const entities = {
@@ -217,20 +263,8 @@ function parseUserId() {
 }
 
 function updateIdentityUi() {
-    if (!state.authenticated) {
-        el.userStatusBadge.className = "status-pill warn";
-        el.userStatusBadge.textContent = "Открыт вне MAX";
-        el.userNameText.textContent = "Гостевой режим";
-        el.userHint.textContent = "Откройте mini app через бот в MAX, чтобы оформлять заказы и видеть персональные данные.";
-        return;
-    }
-
-    el.userStatusBadge.className = "status-pill ok";
-    el.userStatusBadge.textContent = state.isAdmin ? "Вы админ" : "Авторизовано в MAX";
-    el.userNameText.textContent = state.userFullName ? state.userFullName : "Профиль MAX подключен";
-    el.userHint.textContent = state.isAdmin
-        ? "Доступны клиентские и админские функции."
-        : "Доступно оформление заказа и просмотр каталога.";
+    document.body.dataset.authenticated = state.authenticated ? "1" : "0";
+    document.body.dataset.admin = state.isAdmin ? "1" : "0";
 }
 
 function setAdminVisibility() {
@@ -275,6 +309,62 @@ function initTabs() {
     });
 }
 
+function rerenderShopCatalogs() {
+    renderProducts(state.products, el.catalogGrid, el.catalogEmpty, "catalog");
+    renderProducts(state.fixPriceProducts, el.fixPriceGrid, el.fixPriceEmpty, "fix-price");
+}
+
+function initShopControls() {
+    const goBack = () => {
+        if (window.WebApp?.close) {
+            window.WebApp.close();
+            return;
+        }
+        if (window.history.length > 1) {
+            window.history.back();
+        }
+    };
+
+    el.catalogBackBtn.addEventListener("click", goBack);
+    el.fixBackBtn.addEventListener("click", goBack);
+
+    el.catalogSearchInput.addEventListener("input", () => {
+        state.catalogQuery = el.catalogSearchInput.value || "";
+        renderProducts(state.products, el.catalogGrid, el.catalogEmpty, "catalog");
+    });
+
+    el.fixSearchInput.addEventListener("input", () => {
+        state.fixPriceQuery = el.fixSearchInput.value || "";
+        renderProducts(state.fixPriceProducts, el.fixPriceGrid, el.fixPriceEmpty, "fix-price");
+    });
+
+    el.catalogSearchClear.addEventListener("click", () => {
+        state.catalogQuery = "";
+        el.catalogSearchInput.value = "";
+        renderProducts(state.products, el.catalogGrid, el.catalogEmpty, "catalog");
+    });
+
+    el.fixSearchClear.addEventListener("click", () => {
+        state.fixPriceQuery = "";
+        el.fixSearchInput.value = "";
+        renderProducts(state.fixPriceProducts, el.fixPriceGrid, el.fixPriceEmpty, "fix-price");
+    });
+
+    el.catalogFilterBtn.addEventListener("click", () => {
+        state.catalogOnlyAvailable = !state.catalogOnlyAvailable;
+        updateFilterButtonsState();
+        renderProducts(state.products, el.catalogGrid, el.catalogEmpty, "catalog");
+    });
+
+    el.fixFilterBtn.addEventListener("click", () => {
+        state.fixOnlyAvailable = !state.fixOnlyAvailable;
+        updateFilterButtonsState();
+        renderProducts(state.fixPriceProducts, el.fixPriceGrid, el.fixPriceEmpty, "fix-price");
+    });
+
+    updateFilterButtonsState();
+}
+
 function getAllowedUnits(product) {
     if (!product || !product.unitMode) {
         return ["PCS", "CUBIC_METERS"];
@@ -291,39 +381,59 @@ function getAllowedUnits(product) {
     return ["PCS", "CUBIC_METERS"];
 }
 
-function renderProducts(items, targetGrid, targetEmpty) {
+function renderProducts(items, targetGrid, targetEmpty, mode) {
     targetGrid.innerHTML = "";
 
-    if (!items.length) {
+    const query = mode === "catalog" ? state.catalogQuery : state.fixPriceQuery;
+    const onlyAvailable = mode === "catalog" ? state.catalogOnlyAvailable : state.fixOnlyAvailable;
+    const filtered = applyCatalogFilters(items, query, onlyAvailable);
+
+    if (!filtered.length) {
+        targetEmpty.textContent = query
+            ? "Ничего не найдено по запросу."
+            : "Товаров пока нет.";
         targetEmpty.classList.remove("hidden");
         return;
     }
 
     targetEmpty.classList.add("hidden");
 
-    items.forEach((product) => {
+    filtered.forEach((product) => {
         const card = document.createElement("article");
         card.className = "card";
 
-        const oldPriceHtml = product.fixPrice && product.oldPrice
-            ? `<div class=\"price-old\">${money(product.oldPrice)}</div>`
+        const oldPriceHtml = product.oldPrice
+            ? `<div class="price-old">${money(product.oldPrice)}</div>`
             : "";
 
-        const badgeHtml = product.fixPrice
-            ? '<div class="fix-badge">Fix Price 🔥</div>'
+        const discountPercent = getDiscountPercent(product);
+        const discountHtml = discountPercent
+            ? `<span class="discount-pill">-${discountPercent}%</span>`
             : "";
 
         card.innerHTML = `
-            <img src="${escapeHtml(product.imageUrl)}" alt="${escapeHtml(product.name)}">
+            <div class="card-media">
+                <button class="card-fav" type="button" tabindex="-1" aria-hidden="true">♡</button>
+                <img src="${escapeHtml(product.imageUrl)}" alt="${escapeHtml(product.name)}">
+            </div>
             <div class="card-body">
-                ${badgeHtml}
-                <h4>${escapeHtml(product.name)}</h4>
+                <h4 class="card-title">${escapeHtml(product.name)}</h4>
                 ${oldPriceHtml}
-                <div class="price">${money(product.price)}</div>
+                <div class="card-price-row">
+                    <div class="price">${money(product.price)}</div>
+                    ${discountHtml}
+                </div>
+                <button class="card-cta" type="button">Заказать</button>
             </div>
         `;
 
         card.addEventListener("click", () => openProduct(product));
+        const actionBtn = card.querySelector(".card-cta");
+        actionBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            openProduct(product);
+        });
+
         targetGrid.appendChild(card);
     });
 }
@@ -331,13 +441,13 @@ function renderProducts(items, targetGrid, targetEmpty) {
 async function loadCatalog() {
     const items = await api("/api/catalog");
     state.products = items;
-    renderProducts(items, el.catalogGrid, el.catalogEmpty);
+    renderProducts(items, el.catalogGrid, el.catalogEmpty, "catalog");
 }
 
 async function loadFixPrice() {
     const items = await api("/api/fix-price");
     state.fixPriceProducts = items;
-    renderProducts(items, el.fixPriceGrid, el.fixPriceEmpty);
+    renderProducts(items, el.fixPriceGrid, el.fixPriceEmpty, "fix-price");
 }
 
 async function loadInfo() {
@@ -505,8 +615,8 @@ function renderSimpleList(node, rows) {
 }
 
 function renderAdminProducts(products) {
-    const catalogProducts = products.filter((item) => !item.fixPrice);
-    const fixPriceProducts = products.filter((item) => item.fixPrice);
+    const catalogProducts = products.filter((item) => !item.fixPrice && item.active);
+    const fixPriceProducts = products.filter((item) => item.fixPrice && item.active);
 
     const renderGroup = (items, targetNode) => {
         if (!items.length) {
@@ -518,7 +628,6 @@ function renderAdminProducts(products) {
             const oldPriceText = item.fixPrice && item.oldPrice
                 ? ` · было ${money(item.oldPrice)}`
                 : "";
-            const activeTag = item.active ? "" : '<span class="tag off">скрыт</span>';
             const typeTag = item.fixPrice ? '<span class="tag fix">Fix Price</span>' : '<span class="tag catalog">Каталог</span>';
             return `
                 <article class="manage-item">
@@ -527,7 +636,6 @@ function renderAdminProducts(products) {
                         <p class="manage-sub">${money(item.price)}${escapeHtml(oldPriceText)}</p>
                         <div class="manage-badges">
                             ${typeTag}
-                            ${activeTag}
                             <span class="tag catalog">${escapeHtml(unitModeLabel(item.unitMode))}</span>
                         </div>
                     </div>
@@ -924,6 +1032,7 @@ async function init() {
     }
 
     initTabs();
+    initShopControls();
     initOrderFlow();
     initProductFormControls();
     initAdminForms();

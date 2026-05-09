@@ -14,4 +14,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     List<Product> findActiveFixPriceOrderByCreatedAtDesc();
 
     List<Product> findAllByOrderByCreatedAtDesc();
+
+    List<Product> findByActiveTrueOrderByCreatedAtDesc();
 }
