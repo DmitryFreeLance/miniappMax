@@ -36,6 +36,9 @@ public class MaxBotClient {
             return;
         }
 
+        // "open_app" opens the mini app linked to the bot inside MAX.
+        // We also keep a fallback deep link button for cases where client
+        // may not support open_app.
         Map<String, Object> payload = Map.of(
                 "text", text,
                 "attachments", List.of(
@@ -45,8 +48,12 @@ public class MaxBotClient {
                                         "buttons", List.of(
                                                 List.of(
                                                         Map.of(
+                                                                "type", "open_app",
+                                                                "text", "Открыть каталог"
+                                                        ),
+                                                        Map.of(
                                                                 "type", "link",
-                                                                "text", "Открыть каталог",
+                                                                "text", "Открыть в MAX",
                                                                 "url", miniAppUrl
                                                         )
                                                 )

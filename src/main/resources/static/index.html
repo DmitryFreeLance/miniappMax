@@ -6,51 +6,68 @@
     <title>СтройМаркет MAX Mini App</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Prata&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/app.css"/>
+    <script src="https://st.max.ru/js/max-web-app.js"></script>
 </head>
 <body>
-<div class="bg-shape bg-shape-1"></div>
-<div class="bg-shape bg-shape-2"></div>
+<div class="blur-circle blur-a"></div>
+<div class="blur-circle blur-b"></div>
 
-<div class="app-shell">
-    <header class="app-header">
-        <div>
+<div class="layout">
+    <header class="topbar">
+        <div class="brand">
+            <p class="brand-badge">Mini App</p>
             <h1>СтройМаркет</h1>
-            <p>Каталог материалов и онлайн-заказ в MAX</p>
+            <p class="brand-sub">Каталог стройматериалов, заказы и админка</p>
         </div>
-        <div class="user-badge">
-            <label for="userIdInput">Ваш MAX ID</label>
-            <div class="user-row">
-                <input id="userIdInput" type="number" placeholder="например, 10001"/>
-                <button id="saveUserBtn" class="ghost">Сохранить</button>
-            </div>
-        </div>
+        <aside class="profile-card">
+            <p id="userStatusBadge" class="status-pill">Подключение...</p>
+            <h3 id="userNameText">Пользователь MAX</h3>
+            <p id="userHint">Откройте мини-апп из клиента MAX для полной функциональности.</p>
+        </aside>
     </header>
 
-    <nav class="tabs">
+    <nav class="tabs" id="tabsNav">
         <button class="tab active" data-tab="catalog">Каталог</button>
         <button class="tab" data-tab="fix-price">Fix Price 🔥</button>
         <button class="tab" data-tab="info">Общая информация</button>
-        <button class="tab" data-tab="admin">Админка</button>
+        <button class="tab hidden" data-tab="admin" id="adminTabBtn">Админка</button>
     </nav>
 
     <main>
         <section id="catalog" class="tab-content active">
+            <div class="section-head">
+                <h2>Каталог</h2>
+                <p>Выберите материал, откройте карточку и оформите заказ.</p>
+            </div>
             <div id="catalogGrid" class="catalog-grid"></div>
             <div id="catalogEmpty" class="empty hidden">Товаров пока нет.</div>
         </section>
 
         <section id="fix-price" class="tab-content">
+            <div class="section-head">
+                <h2>Fix Price 🔥</h2>
+                <p>Товары со скидкой и ограниченным предложением.</p>
+            </div>
             <div id="fixPriceGrid" class="catalog-grid"></div>
             <div id="fixPriceEmpty" class="empty hidden">Товаров со скидкой пока нет.</div>
         </section>
 
         <section id="info" class="tab-content">
+            <div class="section-head">
+                <h2>Общая информация</h2>
+                <p>Новости и служебные объявления от администратора.</p>
+            </div>
             <div id="infoPosts" class="post-list"></div>
         </section>
 
         <section id="admin" class="tab-content">
+            <div class="section-head">
+                <h2>Админ-панель</h2>
+                <p>Управление товарами, пользователями и заказами.</p>
+            </div>
+
             <div class="admin-grid">
                 <article class="panel">
                     <h3>Добавить товар</h3>
@@ -76,11 +93,11 @@
                         <label id="oldPriceWrapper" class="hidden">Старая цена (₽)
                             <input id="oldPriceInput" name="oldPrice" type="number" step="0.01" min="0.01"/>
                         </label>
-                        <label>Формат количества
+                        <label>Единица измерения
                             <select id="unitModeSelect" name="unitMode" required>
-                                <option value="BOTH">И шт, и кубы</option>
+                                <option value="BOTH">Шт + куб.м</option>
                                 <option value="PCS_ONLY">Только шт</option>
-                                <option value="CUBIC_ONLY">Только кубы</option>
+                                <option value="CUBIC_ONLY">Только куб.м</option>
                             </select>
                         </label>
                         <label id="stockPcsWrapper">Остаток (шт)
@@ -94,7 +111,7 @@
                 </article>
 
                 <article class="panel">
-                    <h3>Текстовый пост</h3>
+                    <h3>Новый пост</h3>
                     <form id="postForm">
                         <label>Заголовок
                             <input name="title" required/>

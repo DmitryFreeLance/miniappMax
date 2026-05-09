@@ -29,6 +29,9 @@ public class UserService {
     }
 
     public void requireAdmin(Long maxUserId) {
+        if (maxUserId == null) {
+            throw new ForbiddenException("Откройте мини-приложение из MAX, чтобы использовать админку");
+        }
         AppUser user = appUserRepository.findByMaxUserId(maxUserId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа: пользователь не найден"));
         if (!user.isAdmin()) {

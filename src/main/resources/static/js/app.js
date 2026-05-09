@@ -1,5 +1,8 @@
 const state = {
     userId: null,
+    authenticated: false,
+    isAdmin: false,
+    userFullName: null,
     products: [],
     fixPriceProducts: [],
     selectedProduct: null,
@@ -10,13 +13,17 @@ const state = {
 const el = {
     tabs: document.querySelectorAll(".tab"),
     tabContents: document.querySelectorAll(".tab-content"),
+    adminTabBtn: document.getElementById("adminTabBtn"),
+    userStatusBadge: document.getElementById("userStatusBadge"),
+    userNameText: document.getElementById("userNameText"),
+    userHint: document.getElementById("userHint"),
+
     catalogGrid: document.getElementById("catalogGrid"),
     catalogEmpty: document.getElementById("catalogEmpty"),
     fixPriceGrid: document.getElementById("fixPriceGrid"),
     fixPriceEmpty: document.getElementById("fixPriceEmpty"),
     infoPosts: document.getElementById("infoPosts"),
-    userIdInput: document.getElementById("userIdInput"),
-    saveUserBtn: document.getElementById("saveUserBtn"),
+
     productModal: document.getElementById("productModal"),
     closeProductModal: document.getElementById("closeProductModal"),
     modalImage: document.getElementById("modalImage"),
@@ -25,6 +32,7 @@ const el = {
     modalOldPriceLine: document.getElementById("modalOldPriceLine"),
     modalOldPrice: document.getElementById("modalOldPrice"),
     modalPrice: document.getElementById("modalPrice"),
+
     orderBtn: document.getElementById("orderBtn"),
     orderModal: document.getElementById("orderModal"),
     closeOrderModal: document.getElementById("closeOrderModal"),
@@ -38,6 +46,7 @@ const el = {
     orderAddress: document.getElementById("orderAddress"),
     submitOrder: document.getElementById("submitOrder"),
     orderMessage: document.getElementById("orderMessage"),
+
     productForm: document.getElementById("productForm"),
     sectionType: document.getElementById("sectionType"),
     oldPriceWrapper: document.getElementById("oldPriceWrapper"),
@@ -47,6 +56,7 @@ const el = {
     stockPcsInput: document.getElementById("stockPcsInput"),
     stockCubicWrapper: document.getElementById("stockCubicWrapper"),
     stockCubicInput: document.getElementById("stockCubicInput"),
+
     postForm: document.getElementById("postForm"),
     addAdminForm: document.getElementById("addAdminForm"),
     adminsList: document.getElementById("adminsList"),
@@ -54,11 +64,26 @@ const el = {
     ordersList: document.getElementById("ordersList")
 };
 
+function notify(message) {
+    alert(message);
+}
+
+function money(value) {
+    return `${Number(value).toLocaleString("ru-RU", {minimumFractionDigits: 2, maximumFractionDigits: 2})} ₽`;
+}
+
+function unitLabel(unit) {
+    return unit === "PCS" ? "шт" : "куб.м";
+}
+
 function api(path, options = {}) {
-    const headers = {
-        "Content-Type": "application/json",
-        ...(options.headers || {})
-    };
+    const headers = {...(options.headers || {})};
+    const hasBody = options.body !== undefined;
+    const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+
+    if (!isFormData) {
+        headers["Content-Type"] = headers["Content-Type"] || "application/json";
+    }
 
     if (state.userId) {
         headers["X-User-Id"] = String(state.userId);
@@ -71,29 +96,115 @@ function api(path, options = {}) {
         const contentType = res.headers.get("content-type") || "";
         const data = contentType.includes("application/json") ? await res.json() : await res.text();
         if (!res.ok) {
-            const msg = data?.message || data || `Ошибка ${res.status}`;
-            throw new Error(msg);
+            const message = data?.message || data || `Ошибка ${res.status}`;
+            throw new Error(message);
         }
+
+        if (!hasBody && options.method === "HEAD") {
+            return null;
+        }
+
         return data;
     });
 }
 
-function money(value) {
-    return `${Number(value).toLocaleString("ru-RU", {minimumFractionDigits: 2, maximumFractionDigits: 2})} ₽`;
+function parseUserIdFromHashWebAppData() {
+    const hash = window.location.hash;
+    if (!hash || !hash.includes("WebAppData=")) {
+        return null;
+    }
+
+    try {
+        const hashParams = new URLSearchParams(hash.slice(1));
+        const webAppData = hashParams.get("WebAppData");
+        if (!webAppData) {
+            return null;
+        }
+
+        const params = new URLSearchParams(webAppData);
+        const rawUser = params.get("user");
+        if (!rawUser) {
+            return null;
+        }
+
+        const user = JSON.parse(rawUser);
+        const id = Number(user?.id);
+        return Number.isFinite(id) && id > 0 ? id : null;
+    } catch {
+        return null;
+    }
 }
 
-function unitLabel(unit) {
-    return unit === "PCS" ? "шт" : "куб.м";
+function parseUserId() {
+    const fromBridge = Number(window.WebApp?.initDataUnsafe?.user?.id);
+    if (Number.isFinite(fromBridge) && fromBridge > 0) {
+        return fromBridge;
+    }
+
+    const fromHash = parseUserIdFromHashWebAppData();
+    if (Number.isFinite(fromHash) && fromHash > 0) {
+        return fromHash;
+    }
+
+    const fromQuery = Number(new URL(window.location.href).searchParams.get("userId"));
+    if (Number.isFinite(fromQuery) && fromQuery > 0) {
+        return fromQuery;
+    }
+
+    return null;
 }
 
-function notify(message) {
-    alert(message);
+function updateIdentityUi() {
+    if (!state.authenticated) {
+        el.userStatusBadge.className = "status-pill warn";
+        el.userStatusBadge.textContent = "Открыт вне MAX";
+        el.userNameText.textContent = "Гостевой режим";
+        el.userHint.textContent = "Откройте mini app через бот в MAX, чтобы оформлять заказы и видеть персональные данные.";
+        return;
+    }
+
+    el.userStatusBadge.className = "status-pill ok";
+    el.userStatusBadge.textContent = state.isAdmin ? "Вы админ" : "Авторизовано в MAX";
+    el.userNameText.textContent = state.userFullName ? state.userFullName : "Профиль MAX подключен";
+    el.userHint.textContent = state.isAdmin
+        ? "Доступны клиентские и админские функции." : "Доступно оформление заказа и просмотр каталога.";
 }
 
-function getQueryUserId() {
-    const url = new URL(window.location.href);
-    const queryId = url.searchParams.get("userId") || url.searchParams.get("uid");
-    return queryId ? Number(queryId) : null;
+function setAdminVisibility() {
+    el.adminTabBtn.classList.toggle("hidden", !state.isAdmin);
+
+    const activeAdmin = document.querySelector(".tab.active")?.dataset?.tab === "admin";
+    if (!state.isAdmin && activeAdmin) {
+        switchTab("catalog");
+    }
+}
+
+function switchTab(tabId) {
+    el.tabs.forEach((btn) => {
+        const isActive = btn.dataset.tab === tabId;
+        btn.classList.toggle("active", isActive);
+    });
+
+    el.tabContents.forEach((section) => {
+        section.classList.toggle("active", section.id === tabId);
+    });
+
+    if (tabId === "admin" && state.isAdmin) {
+        loadAdminData();
+    }
+}
+
+function initTabs() {
+    el.tabs.forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const target = btn.dataset.tab;
+            if (target === "admin" && !state.isAdmin) {
+                notify("Раздел доступен только администраторам.");
+                return;
+            }
+            switchTab(target);
+        });
+    });
 }
 
 function getAllowedUnits(product) {
@@ -112,45 +223,6 @@ function getAllowedUnits(product) {
     return ["PCS", "CUBIC_METERS"];
 }
 
-function initUserId() {
-    const fromStorage = Number(localStorage.getItem("maxUserId"));
-    const fromQuery = getQueryUserId();
-    const fallback = Number.isFinite(fromQuery) ? fromQuery : (Number.isFinite(fromStorage) ? fromStorage : null);
-
-    if (fallback) {
-        state.userId = fallback;
-        el.userIdInput.value = String(fallback);
-    }
-
-    el.saveUserBtn.addEventListener("click", () => {
-        const value = Number(el.userIdInput.value);
-        if (!Number.isFinite(value) || value <= 0) {
-            notify("Укажите корректный MAX ID");
-            return;
-        }
-        state.userId = value;
-        localStorage.setItem("maxUserId", String(value));
-        notify("MAX ID сохранен");
-    });
-}
-
-function initTabs() {
-    el.tabs.forEach((btn) => {
-        btn.addEventListener("click", () => {
-            el.tabs.forEach((x) => x.classList.remove("active"));
-            btn.classList.add("active");
-            const target = btn.dataset.tab;
-            el.tabContents.forEach((content) => {
-                content.classList.toggle("active", content.id === target);
-            });
-
-            if (target === "admin") {
-                loadAdminData();
-            }
-        });
-    });
-}
-
 function renderProducts(items, targetGrid, targetEmpty) {
     targetGrid.innerHTML = "";
 
@@ -160,15 +232,18 @@ function renderProducts(items, targetGrid, targetEmpty) {
     }
 
     targetEmpty.classList.add("hidden");
+
     items.forEach((product) => {
         const card = document.createElement("article");
         card.className = "card";
 
         const oldPriceHtml = product.fixPrice && product.oldPrice
-            ? `<div class="price-old">${money(product.oldPrice)}</div>`
+            ? `<div class=\"price-old\">${money(product.oldPrice)}</div>`
             : "";
 
-        const badgeHtml = product.fixPrice ? '<div class="fix-badge">Fix Price 🔥</div>' : "";
+        const badgeHtml = product.fixPrice
+            ? '<div class="fix-badge">Fix Price 🔥</div>'
+            : "";
 
         card.innerHTML = `
             <img src="${product.imageUrl}" alt="${product.name}">
@@ -179,6 +254,7 @@ function renderProducts(items, targetGrid, targetEmpty) {
                 <div class="price">${money(product.price)}</div>
             </div>
         `;
+
         card.addEventListener("click", () => openProduct(product));
         targetGrid.appendChild(card);
     });
@@ -199,6 +275,7 @@ async function loadFixPrice() {
 async function loadInfo() {
     const posts = await api("/api/info");
     el.infoPosts.innerHTML = "";
+
     if (!posts.length) {
         el.infoPosts.innerHTML = '<div class="empty">Постов пока нет.</div>';
         return;
@@ -240,7 +317,6 @@ function closeProduct() {
 
 function configureOrderUnitSelect(product) {
     const allowed = getAllowedUnits(product);
-
     el.orderUnit.innerHTML = allowed
         .map((unit) => `<option value="${unit}">${unitLabel(unit)}</option>`)
         .join("");
@@ -250,7 +326,15 @@ function configureOrderUnitSelect(product) {
 }
 
 function openOrder() {
-    if (!state.selectedProduct) return;
+    if (!state.authenticated || !state.userId) {
+        notify("Оформление заказа доступно только при открытии mini app из MAX.");
+        return;
+    }
+
+    if (!state.selectedProduct) {
+        return;
+    }
+
     configureOrderUnitSelect(state.selectedProduct);
     el.orderModal.classList.remove("hidden");
     el.orderStep1.classList.remove("hidden");
@@ -272,9 +356,10 @@ function initOrderFlow() {
     el.goStep2.addEventListener("click", () => {
         const qty = Number(el.orderQuantity.value);
         if (!Number.isFinite(qty) || qty <= 0) {
-            notify("Введите количество");
+            notify("Введите корректное количество");
             return;
         }
+
         state.orderQuantity = qty;
         state.orderUnit = el.orderUnit.value;
         el.orderStep1.classList.add("hidden");
@@ -282,16 +367,17 @@ function initOrderFlow() {
     });
 
     el.submitOrder.addEventListener("click", async () => {
-        if (!state.userId) {
-            notify("Сначала укажите MAX ID вверху страницы");
+        if (!state.authenticated || !state.userId) {
+            notify("Откройте mini app через MAX.");
             return;
         }
 
         const fullName = el.orderFullName.value.trim();
         const phone = el.orderPhone.value.trim();
         const address = el.orderAddress.value.trim();
+
         if (!fullName || !phone || !address) {
-            notify("Заполните ФИО, телефон и адрес");
+            notify("Заполните ФИО, телефон и адрес доставки");
             return;
         }
 
@@ -309,8 +395,12 @@ function initOrderFlow() {
             });
 
             if (response.paymentUrl) {
-                el.orderMessage.textContent = `Сумма: ${money(response.totalPrice)}. Перенаправляем на оплату...`;
-                window.open(response.paymentUrl, "_blank", "noopener,noreferrer");
+                el.orderMessage.textContent = `Сумма: ${money(response.totalPrice)}. Открываем оплату...`;
+                if (window.WebApp?.openLink) {
+                    window.WebApp.openLink(response.paymentUrl);
+                } else {
+                    window.open(response.paymentUrl, "_blank", "noopener,noreferrer");
+                }
             } else {
                 el.orderMessage.textContent = "Заказ создан. С вами свяжется менеджер.";
             }
@@ -322,19 +412,27 @@ function initOrderFlow() {
     el.closeOrderModal.addEventListener("click", closeOrder);
     el.closeProductModal.addEventListener("click", closeProduct);
 
-    window.addEventListener("click", (e) => {
-        if (e.target === el.productModal) closeProduct();
-        if (e.target === el.orderModal) closeOrder();
+    window.addEventListener("click", (event) => {
+        if (event.target === el.productModal) {
+            closeProduct();
+        }
+        if (event.target === el.orderModal) {
+            closeOrder();
+        }
     });
 }
 
 function renderSimpleList(node, rows) {
     node.innerHTML = rows.length
-        ? rows.map((row) => `<div class="list-row">${row}</div>`).join("")
+        ? rows.map((row) => `<div class=\"list-row\">${row}</div>`).join("")
         : '<div class="list-row">Нет данных</div>';
 }
 
 async function loadAdminData() {
+    if (!state.isAdmin) {
+        return;
+    }
+
     try {
         const [admins, users, orders] = await Promise.all([
             api("/api/admin/admins"),
@@ -344,17 +442,17 @@ async function loadAdminData() {
 
         renderSimpleList(
             el.adminsList,
-            admins.map((a) => `ID ${a.maxUserId} | ${a.fullName || "без имени"}`)
+            admins.map((item) => `ID ${item.maxUserId} | ${item.fullName || "без имени"}`)
         );
 
         renderSimpleList(
             el.usersList,
-            users.map((u) => `ID ${u.maxUserId} | ${u.phone || "телефон не указан"} | ${u.admin ? "admin" : "user"}`)
+            users.map((item) => `ID ${item.maxUserId} | ${item.phone || "телефон не указан"} | ${item.admin ? "admin" : "user"}`)
         );
 
         renderSimpleList(
             el.ordersList,
-            orders.map((o) => `#${o.id} | ${o.productName} | ${o.quantity} ${unitLabel(o.quantityUnit)} | ${money(o.totalPrice)} | ${o.status}`)
+            orders.map((item) => `#${item.id} | ${item.productName} | ${item.quantity} ${unitLabel(item.quantityUnit)} | ${money(item.totalPrice)} | ${item.status}`)
         );
     } catch (error) {
         renderSimpleList(el.adminsList, [`Ошибка: ${error.message}`]);
@@ -367,22 +465,13 @@ async function uploadImage(file) {
     const formData = new FormData();
     formData.append("file", file);
 
-    const headers = {};
-    if (state.userId) {
-        headers["X-User-Id"] = String(state.userId);
-    }
-
-    const res = await fetch("/api/admin/uploads", {
+    const response = await api("/api/admin/uploads", {
         method: "POST",
-        headers,
-        body: formData
+        body: formData,
+        headers: {}
     });
 
-    const data = await res.json();
-    if (!res.ok) {
-        throw new Error(data.message || "Ошибка загрузки фото");
-    }
-    return data.imageUrl;
+    return response.imageUrl;
 }
 
 function syncStockInputsByUnitMode() {
@@ -409,6 +498,7 @@ function syncFixPriceFields() {
     const isFixPrice = el.sectionType.value === "FIX_PRICE";
     el.oldPriceWrapper.classList.toggle("hidden", !isFixPrice);
     el.oldPriceInput.required = isFixPrice;
+
     if (!isFixPrice) {
         el.oldPriceInput.value = "";
     }
@@ -425,13 +515,20 @@ function parseOptionalNumber(value) {
     if (value === null || value === undefined || value === "") {
         return null;
     }
+
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
 }
 
 function initAdminForms() {
-    el.productForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
+    el.productForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        if (!state.isAdmin) {
+            notify("Недостаточно прав для добавления товара");
+            return;
+        }
+
         try {
             const formData = new FormData(el.productForm);
             const unitMode = formData.get("unitMode");
@@ -439,16 +536,16 @@ function initAdminForms() {
             const isFixPrice = sectionType === "FIX_PRICE";
 
             const file = document.getElementById("productImage").files[0];
-            let imageUrl = "";
-            if (file) {
-                imageUrl = await uploadImage(file);
-            } else {
+            if (!file) {
                 throw new Error("Загрузите фото товара");
             }
+
+            const imageUrl = await uploadImage(file);
 
             const stockPcs = (unitMode === "PCS_ONLY" || unitMode === "BOTH")
                 ? parseOptionalNumber(formData.get("stockPcs"))
                 : null;
+
             const stockCubicMeters = (unitMode === "CUBIC_ONLY" || unitMode === "BOTH")
                 ? parseOptionalNumber(formData.get("stockCubicMeters"))
                 : null;
@@ -456,6 +553,7 @@ function initAdminForms() {
             if ((unitMode === "PCS_ONLY" || unitMode === "BOTH") && stockPcs === null) {
                 throw new Error("Укажите остаток в штуках");
             }
+
             if ((unitMode === "CUBIC_ONLY" || unitMode === "BOTH") && stockCubicMeters === null) {
                 throw new Error("Укажите остаток в кубометрах");
             }
@@ -464,7 +562,7 @@ function initAdminForms() {
             const oldPrice = parseOptionalNumber(formData.get("oldPrice"));
 
             if (isFixPrice && (oldPrice === null || oldPrice <= price)) {
-                throw new Error("Для Fix Price старая цена должна быть больше текущей");
+                throw new Error("Для Fix Price старая цена должна быть выше текущей");
             }
 
             await api("/api/admin/products", {
@@ -493,8 +591,14 @@ function initAdminForms() {
         }
     });
 
-    el.postForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
+    el.postForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        if (!state.isAdmin) {
+            notify("Недостаточно прав для публикации постов");
+            return;
+        }
+
         const formData = new FormData(el.postForm);
         try {
             await api("/api/admin/info-posts", {
@@ -504,6 +608,7 @@ function initAdminForms() {
                     content: formData.get("content")
                 })
             });
+
             notify("Пост опубликован");
             el.postForm.reset();
             await loadInfo();
@@ -512,14 +617,21 @@ function initAdminForms() {
         }
     });
 
-    el.addAdminForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
+    el.addAdminForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        if (!state.isAdmin) {
+            notify("Недостаточно прав для управления админами");
+            return;
+        }
+
         const formData = new FormData(el.addAdminForm);
         try {
             await api("/api/admin/admins", {
                 method: "POST",
                 body: JSON.stringify({maxUserId: Number(formData.get("maxUserId"))})
             });
+
             notify("Админ добавлен");
             el.addAdminForm.reset();
             await loadAdminData();
@@ -529,13 +641,47 @@ function initAdminForms() {
     });
 }
 
+async function bootstrapUser() {
+    state.userId = parseUserId();
+
+    if (!state.userId) {
+        state.authenticated = false;
+        state.isAdmin = false;
+        state.userFullName = null;
+        updateIdentityUi();
+        setAdminVisibility();
+        return;
+    }
+
+    try {
+        const currentUser = await api("/api/users/me");
+        state.authenticated = !!currentUser.authenticated;
+        state.isAdmin = !!currentUser.admin;
+        state.userFullName = (currentUser.fullName || "").trim() || null;
+        state.userId = currentUser.maxUserId || state.userId;
+        updateIdentityUi();
+        setAdminVisibility();
+    } catch (error) {
+        console.error(error);
+        state.authenticated = false;
+        state.isAdmin = false;
+        state.userFullName = null;
+        updateIdentityUi();
+        setAdminVisibility();
+    }
+}
+
 async function init() {
-    initUserId();
+    if (window.WebApp?.ready) {
+        window.WebApp.ready();
+    }
+
     initTabs();
     initOrderFlow();
     initProductFormControls();
     initAdminForms();
 
+    await bootstrapUser();
     await Promise.all([loadCatalog(), loadFixPrice(), loadInfo()]);
 }
 

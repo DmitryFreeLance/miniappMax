@@ -46,7 +46,7 @@ public class AdminController {
     }
 
     @GetMapping("/users")
-    public List<UserResponse> users(@RequestHeader("X-User-Id") Long adminUserId) {
+    public List<UserResponse> users(@RequestHeader(name = "X-User-Id", required = false) Long adminUserId) {
         requireAdmin(adminUserId);
         return userService.findAll().stream()
                 .map(this::toUserResponse)
@@ -54,20 +54,20 @@ public class AdminController {
     }
 
     @GetMapping("/orders")
-    public List<OrderResponse> orders(@RequestHeader("X-User-Id") Long adminUserId) {
+    public List<OrderResponse> orders(@RequestHeader(name = "X-User-Id", required = false) Long adminUserId) {
         requireAdmin(adminUserId);
         return orderService.getAllOrders();
     }
 
     @GetMapping("/products")
-    public List<ProductResponse> products(@RequestHeader("X-User-Id") Long adminUserId) {
+    public List<ProductResponse> products(@RequestHeader(name = "X-User-Id", required = false) Long adminUserId) {
         requireAdmin(adminUserId);
         return productService.getAllForAdmin();
     }
 
     @PostMapping("/products")
     public ProductResponse createProduct(
-            @RequestHeader("X-User-Id") Long adminUserId,
+            @RequestHeader(name = "X-User-Id", required = false) Long adminUserId,
             @RequestBody @Valid AdminCreateProductRequest request
     ) {
         requireAdmin(adminUserId);
@@ -76,7 +76,7 @@ public class AdminController {
 
     @PutMapping("/products/{id}")
     public ProductResponse updateProduct(
-            @RequestHeader("X-User-Id") Long adminUserId,
+            @RequestHeader(name = "X-User-Id", required = false) Long adminUserId,
             @PathVariable Long id,
             @RequestBody @Valid AdminCreateProductRequest request
     ) {
@@ -85,7 +85,7 @@ public class AdminController {
     }
 
     @GetMapping("/admins")
-    public List<UserResponse> admins(@RequestHeader("X-User-Id") Long adminUserId) {
+    public List<UserResponse> admins(@RequestHeader(name = "X-User-Id", required = false) Long adminUserId) {
         requireAdmin(adminUserId);
         return userService.findAdmins().stream()
                 .map(this::toUserResponse)
@@ -94,7 +94,7 @@ public class AdminController {
 
     @PostMapping("/admins")
     public UserResponse addAdmin(
-            @RequestHeader("X-User-Id") Long adminUserId,
+            @RequestHeader(name = "X-User-Id", required = false) Long adminUserId,
             @RequestBody @Valid AdminAddAdminRequest request
     ) {
         requireAdmin(adminUserId);
@@ -104,7 +104,7 @@ public class AdminController {
 
     @PostMapping("/info-posts")
     public InfoPostResponse createInfoPost(
-            @RequestHeader("X-User-Id") Long adminUserId,
+            @RequestHeader(name = "X-User-Id", required = false) Long adminUserId,
             @RequestBody @Valid AdminCreateInfoPostRequest request
     ) {
         requireAdmin(adminUserId);
@@ -113,7 +113,7 @@ public class AdminController {
 
     @PostMapping(value = "/uploads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public UploadResponse uploadImage(
-            @RequestHeader("X-User-Id") Long adminUserId,
+            @RequestHeader(name = "X-User-Id", required = false) Long adminUserId,
             @RequestPart("file") MultipartFile file
     ) throws IOException {
         requireAdmin(adminUserId);
