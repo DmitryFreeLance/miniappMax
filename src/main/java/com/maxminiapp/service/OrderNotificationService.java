@@ -1,6 +1,5 @@
 package com.maxminiapp.service;
 
-import com.maxminiapp.config.AppProperties;
 import com.maxminiapp.integration.MaxBotClient;
 import com.maxminiapp.model.AppUser;
 import com.maxminiapp.model.Order;
@@ -15,16 +14,13 @@ public class OrderNotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderNotificationService.class);
 
-    private final AppProperties appProperties;
     private final UserService userService;
     private final MaxBotClient maxBotClient;
 
     public OrderNotificationService(
-            AppProperties appProperties,
             UserService userService,
             MaxBotClient maxBotClient
     ) {
-        this.appProperties = appProperties;
         this.userService = userService;
         this.maxBotClient = maxBotClient;
     }
@@ -43,12 +39,7 @@ public class OrderNotificationService {
             }
 
             try {
-                String miniAppUrl = appProperties.getMax().getMiniappUrl();
-                if (miniAppUrl != null && !miniAppUrl.isBlank()) {
-                    maxBotClient.sendMiniAppMessage(maxUserId, text, miniAppUrl);
-                } else {
-                    maxBotClient.sendTextMessage(maxUserId, text);
-                }
+                maxBotClient.sendTextMessage(maxUserId, text);
             } catch (Exception ex) {
                 log.warn("Failed to notify admin {}: {}", maxUserId, ex.getMessage());
             }
