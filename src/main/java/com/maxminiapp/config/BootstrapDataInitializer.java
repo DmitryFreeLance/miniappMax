@@ -70,6 +70,7 @@ public class BootstrapDataInitializer implements CommandLineRunner {
             concrete.setDescription("Товарный бетон для фундамента и монолитных работ.");
             concrete.setImageUrl("https://images.unsplash.com/photo-1617098474202-0d0d7f60e786?auto=format&fit=crop&w=1200&q=80");
             concrete.setPrice(new BigDecimal("6200.00"));
+            concrete.setPriceCubicMeters(new BigDecimal("6200.00"));
             concrete.setStockCubicMeters(new BigDecimal("100.000"));
             concrete.setStockPcs(new BigDecimal("0.000"));
             concrete.setUnitMode(UnitMode.CUBIC_ONLY);
@@ -81,6 +82,7 @@ public class BootstrapDataInitializer implements CommandLineRunner {
             brick.setDescription("Качественный облицовочный кирпич, подходит для фасадных работ.");
             brick.setImageUrl("https://images.unsplash.com/photo-1599707367072-cd6ada2bc375?auto=format&fit=crop&w=1200&q=80");
             brick.setPrice(new BigDecimal("38.50"));
+            brick.setPricePcs(new BigDecimal("38.50"));
             brick.setStockPcs(new BigDecimal("30000.000"));
             brick.setStockCubicMeters(new BigDecimal("0.000"));
             brick.setUnitMode(UnitMode.PCS_ONLY);
@@ -92,6 +94,7 @@ public class BootstrapDataInitializer implements CommandLineRunner {
             insulation.setDescription("Экструдированный пенополистирол для теплоизоляции фундамента и стен.");
             insulation.setImageUrl("https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=1200&q=80");
             insulation.setPrice(new BigDecimal("349.00"));
+            insulation.setPricePcs(new BigDecimal("349.00"));
             insulation.setOldPrice(new BigDecimal("430.00"));
             insulation.setStockPcs(new BigDecimal("2500.000"));
             insulation.setStockCubicMeters(new BigDecimal("0.000"));
@@ -118,8 +121,48 @@ public class BootstrapDataInitializer implements CommandLineRunner {
     private void normalizeExistingProducts() {
         List<Product> toUpdate = new ArrayList<>();
         for (Product product : productRepository.findAll()) {
+            boolean changed = false;
+
             if (product.getFixPrice() == null) {
                 product.setFixPrice(false);
+                changed = true;
+            }
+
+            if (product.getUnitMode() == UnitMode.PCS_ONLY) {
+                if (product.getPricePcs() == null && product.getPrice() != null) {
+                    product.setPricePcs(product.getPrice());
+                    changed = true;
+                }
+            } else if (product.getUnitMode() == UnitMode.CUBIC_ONLY) {
+                if (product.getPriceCubicMeters() == null && product.getPrice() != null) {
+                    product.setPriceCubicMeters(product.getPrice());
+                    changed = true;
+                }
+            } else {
+                if (product.getPricePcs() == null && product.getPrice() != null) {
+                    product.setPricePcs(product.getPrice());
+                    changed = true;
+                }
+                if (product.getPriceCubicMeters() == null && product.getPrice() != null) {
+                    product.setPriceCubicMeters(product.getPrice());
+                    changed = true;
+                }
+            }
+
+            if (product.getPrice() == null) {
+                if (product.getPricePcs() != null && product.getPriceCubicMeters() != null) {
+                    product.setPrice(product.getPricePcs().min(product.getPriceCubicMeters()));
+                    changed = true;
+                } else if (product.getPricePcs() != null) {
+                    product.setPrice(product.getPricePcs());
+                    changed = true;
+                } else if (product.getPriceCubicMeters() != null) {
+                    product.setPrice(product.getPriceCubicMeters());
+                    changed = true;
+                }
+            }
+
+            if (changed) {
                 toUpdate.add(product);
             }
         }

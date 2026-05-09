@@ -3,7 +3,6 @@ package com.maxminiapp.dto;
 import com.maxminiapp.enums.UnitMode;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
 
@@ -18,9 +17,11 @@ public class AdminCreateProductRequest {
     @NotBlank
     private String imageUrl;
 
-    @NotNull
     @DecimalMin("0.01")
-    private BigDecimal price;
+    private BigDecimal pricePcs;
+
+    @DecimalMin("0.01")
+    private BigDecimal priceCubicMeters;
 
     @DecimalMin("0.01")
     private BigDecimal oldPrice;
@@ -61,12 +62,20 @@ public class AdminCreateProductRequest {
         this.imageUrl = imageUrl;
     }
 
-    public BigDecimal getPrice() {
-        return price;
+    public BigDecimal getPricePcs() {
+        return pricePcs;
     }
 
-    public void setPrice(BigDecimal price) {
-        this.price = price;
+    public void setPricePcs(BigDecimal pricePcs) {
+        this.pricePcs = pricePcs;
+    }
+
+    public BigDecimal getPriceCubicMeters() {
+        return priceCubicMeters;
+    }
+
+    public void setPriceCubicMeters(BigDecimal priceCubicMeters) {
+        this.priceCubicMeters = priceCubicMeters;
     }
 
     public BigDecimal getOldPrice() {

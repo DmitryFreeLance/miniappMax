@@ -10,6 +10,8 @@ public record ProductResponse(
         String description,
         String imageUrl,
         BigDecimal price,
+        BigDecimal pricePcs,
+        BigDecimal priceCubicMeters,
         BigDecimal oldPrice,
         BigDecimal stockPcs,
         BigDecimal stockCubicMeters,

@@ -86,6 +86,8 @@ public class ProductService {
     private void applyRequest(Product product, AdminCreateProductRequest request) {
         UnitMode unitMode = request.getUnitMode() == null ? UnitMode.BOTH : request.getUnitMode();
         boolean fixPrice = Boolean.TRUE.equals(request.getFixPrice());
+        BigDecimal pricePcs = request.getPricePcs();
+        BigDecimal priceCubicMeters = request.getPriceCubicMeters();
 
         if ((unitMode == UnitMode.PCS_ONLY || unitMode == UnitMode.BOTH)
                 && request.getStockPcs() == null) {
@@ -97,11 +99,27 @@ public class ProductService {
             throw new BadRequestException("Для выбранного режима нужно указать остаток в кубометрах");
         }
 
+        if ((unitMode == UnitMode.PCS_ONLY || unitMode == UnitMode.BOTH) && pricePcs == null) {
+            throw new BadRequestException("Для выбранного режима нужно указать цену за штуку");
+        }
+
+        if ((unitMode == UnitMode.CUBIC_ONLY || unitMode == UnitMode.BOTH) && priceCubicMeters == null) {
+            throw new BadRequestException("Для выбранного режима нужно указать цену за кубометр");
+        }
+
+        BigDecimal primaryPrice = selectPrimaryPrice(unitMode, pricePcs, priceCubicMeters);
+
         if (fixPrice) {
             if (request.getOldPrice() == null) {
                 throw new BadRequestException("Для раздела Fix Price нужно указать старую цену");
             }
-            if (request.getOldPrice().compareTo(request.getPrice()) <= 0) {
+
+            if (unitMode == UnitMode.BOTH) {
+                if (request.getOldPrice().compareTo(pricePcs) <= 0
+                        || request.getOldPrice().compareTo(priceCubicMeters) <= 0) {
+                    throw new BadRequestException("Старая цена должна быть больше цен за шт и куб.м");
+                }
+            } else if (request.getOldPrice().compareTo(primaryPrice) <= 0) {
                 throw new BadRequestException("Старая цена должна быть больше текущей цены");
             }
         }
@@ -109,13 +127,37 @@ public class ProductService {
         product.setName(request.getName().trim());
         product.setDescription(request.getDescription().trim());
         product.setImageUrl(request.getImageUrl().trim());
-        product.setPrice(request.getPrice());
+        product.setPrice(primaryPrice);
+        product.setPricePcs(unitMode == UnitMode.CUBIC_ONLY ? null : pricePcs);
+        product.setPriceCubicMeters(unitMode == UnitMode.PCS_ONLY ? null : priceCubicMeters);
         product.setOldPrice(fixPrice ? request.getOldPrice() : null);
         product.setStockPcs(unitMode == UnitMode.CUBIC_ONLY ? null : request.getStockPcs());
         product.setStockCubicMeters(unitMode == UnitMode.PCS_ONLY ? null : request.getStockCubicMeters());
         product.setUnitMode(unitMode);
         product.setFixPrice(fixPrice);
         product.setActive(request.getActive() == null || request.getActive());
+    }
+
+    public BigDecimal resolveUnitPrice(Product product, QuantityUnit unit) {
+        if (unit == QuantityUnit.PCS) {
+            if (product.getUnitMode() == UnitMode.CUBIC_ONLY) {
+                throw new BadRequestException("Товар нельзя заказать в штуках");
+            }
+            BigDecimal price = product.getPricePcs() != null ? product.getPricePcs() : product.getPrice();
+            if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BadRequestException("Для товара не настроена цена за штуку");
+            }
+            return price;
+        }
+
+        if (product.getUnitMode() == UnitMode.PCS_ONLY) {
+            throw new BadRequestException("Товар нельзя заказать в кубометрах");
+        }
+        BigDecimal price = product.getPriceCubicMeters() != null ? product.getPriceCubicMeters() : product.getPrice();
+        if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Для товара не настроена цена за кубометр");
+        }
+        return price;
     }
 
     @Transactional
@@ -162,6 +204,8 @@ public class ProductService {
                 product.getDescription(),
                 product.getImageUrl(),
                 product.getPrice(),
+                product.getPricePcs(),
+                product.getPriceCubicMeters(),
                 product.getOldPrice(),
                 product.getStockPcs(),
                 product.getStockCubicMeters(),
@@ -169,5 +213,15 @@ public class ProductService {
                 Boolean.TRUE.equals(product.getFixPrice()),
                 product.isActive()
         );
+    }
+
+    private BigDecimal selectPrimaryPrice(UnitMode unitMode, BigDecimal pricePcs, BigDecimal priceCubicMeters) {
+        if (unitMode == UnitMode.PCS_ONLY) {
+            return pricePcs;
+        }
+        if (unitMode == UnitMode.CUBIC_ONLY) {
+            return priceCubicMeters;
+        }
+        return pricePcs.min(priceCubicMeters);
     }
 }

@@ -67,6 +67,10 @@ const el = {
     sectionType: document.getElementById("sectionType"),
     oldPriceWrapper: document.getElementById("oldPriceWrapper"),
     oldPriceInput: document.getElementById("oldPriceInput"),
+    pricePcsWrapper: document.getElementById("pricePcsWrapper"),
+    pricePcsInput: document.getElementById("pricePcsInput"),
+    priceCubicWrapper: document.getElementById("priceCubicWrapper"),
+    priceCubicInput: document.getElementById("priceCubicInput"),
     unitModeSelect: document.getElementById("unitModeSelect"),
     stockPcsWrapper: document.getElementById("stockPcsWrapper"),
     stockPcsInput: document.getElementById("stockPcsInput"),
@@ -101,14 +105,50 @@ function unitModeLabel(unitMode) {
     return "шт + куб.м";
 }
 
-function unitPriceSuffixByMode(unitMode) {
-    if (unitMode === "PCS_ONLY") {
-        return " / шт";
+function getUnitPriceValue(product, unit) {
+    if (unit === "PCS") {
+        return product.pricePcs ?? product.price ?? null;
     }
-    if (unitMode === "CUBIC_ONLY") {
-        return " / куб.м";
+    if (unit === "CUBIC_METERS") {
+        return product.priceCubicMeters ?? product.price ?? null;
     }
-    return " / шт или куб.м";
+    return product.price ?? null;
+}
+
+function getDisplayPrice(product) {
+    if (!product) {
+        return null;
+    }
+
+    if (product.unitMode === "PCS_ONLY") {
+        return getUnitPriceValue(product, "PCS");
+    }
+
+    if (product.unitMode === "CUBIC_ONLY") {
+        return getUnitPriceValue(product, "CUBIC_METERS");
+    }
+
+    const byPcs = getUnitPriceValue(product, "PCS");
+    const byCubic = getUnitPriceValue(product, "CUBIC_METERS");
+    if (byPcs != null && byCubic != null) {
+        return Math.min(Number(byPcs), Number(byCubic));
+    }
+    return byPcs ?? byCubic ?? product.price ?? null;
+}
+
+function getPriceSummaryText(product) {
+    const byPcs = getUnitPriceValue(product, "PCS");
+    const byCubic = getUnitPriceValue(product, "CUBIC_METERS");
+
+    if (product.unitMode === "PCS_ONLY") {
+        return byPcs != null ? `${money(byPcs)} / шт` : "-";
+    }
+    if (product.unitMode === "CUBIC_ONLY") {
+        return byCubic != null ? `${money(byCubic)} / куб.м` : "-";
+    }
+    const left = byPcs != null ? `${money(byPcs)} / шт` : "— / шт";
+    const right = byCubic != null ? `${money(byCubic)} / куб.м` : "— / куб.м";
+    return `${left} · ${right}`;
 }
 
 function orderStatusLabel(status) {
@@ -145,10 +185,11 @@ function formatDateTime(value) {
 }
 
 function getDiscountPercent(product) {
-    if (!product?.oldPrice || Number(product.oldPrice) <= Number(product.price)) {
+    const displayPrice = getDisplayPrice(product);
+    if (displayPrice == null || !product?.oldPrice || Number(product.oldPrice) <= Number(displayPrice)) {
         return null;
     }
-    return Math.round((1 - Number(product.price) / Number(product.oldPrice)) * 100);
+    return Math.round((1 - Number(displayPrice) / Number(product.oldPrice)) * 100);
 }
 
 function hasAvailableStock(product) {
@@ -411,6 +452,7 @@ function renderProducts(items, targetGrid, targetEmpty, mode) {
     filtered.forEach((product) => {
         const card = document.createElement("article");
         card.className = "card";
+        const displayPrice = getDisplayPrice(product);
 
         const oldPriceHtml = product.oldPrice
             ? `<div class="price-old">${money(product.oldPrice)}</div>`
@@ -430,7 +472,7 @@ function renderProducts(items, targetGrid, targetEmpty, mode) {
                 <h4 class="card-title">${escapeHtml(product.name)}</h4>
                 ${oldPriceHtml}
                 <div class="card-price-row">
-                    <div class="price">${money(product.price)}</div>
+                    <div class="price">${displayPrice == null ? "-" : money(displayPrice)}</div>
                     ${discountHtml}
                 </div>
                 <button class="card-cta" type="button">Заказать</button>
@@ -494,12 +536,11 @@ function openProduct(product) {
     el.modalImage.src = product.imageUrl;
     el.modalTitle.textContent = product.name;
     el.modalDescription.textContent = product.description;
-    const unitSuffix = unitPriceSuffixByMode(product.unitMode);
-    el.modalPrice.textContent = `${money(product.price)}${unitSuffix}`;
+    el.modalPrice.textContent = getPriceSummaryText(product);
 
     if (product.fixPrice && product.oldPrice) {
         el.modalOldPriceLine.classList.remove("hidden");
-        el.modalOldPrice.textContent = `${money(product.oldPrice)}${unitSuffix}`;
+        el.modalOldPrice.textContent = money(product.oldPrice);
     } else {
         el.modalOldPriceLine.classList.add("hidden");
         el.modalOldPrice.textContent = "";
@@ -640,11 +681,12 @@ function renderAdminProducts(products) {
                 ? ` · было ${money(item.oldPrice)}`
                 : "";
             const typeTag = item.fixPrice ? '<span class="tag fix">Fix Price</span>' : '<span class="tag catalog">Каталог</span>';
+            const priceSummary = getPriceSummaryText(item);
             return `
                 <article class="manage-item">
                     <div class="manage-meta">
                         <p class="manage-title">${escapeHtml(item.name)}</p>
-                        <p class="manage-sub">${money(item.price)}${escapeHtml(oldPriceText)}</p>
+                        <p class="manage-sub">${escapeHtml(priceSummary)}${escapeHtml(oldPriceText)}</p>
                         <div class="manage-badges">
                             ${typeTag}
                             <span class="tag catalog">${escapeHtml(unitModeLabel(item.unitMode))}</span>
@@ -846,12 +888,22 @@ function syncStockInputsByUnitMode() {
     const pcsVisible = mode === "PCS_ONLY" || mode === "BOTH";
     const cubicVisible = mode === "CUBIC_ONLY" || mode === "BOTH";
 
+    el.pricePcsWrapper.classList.toggle("hidden", !pcsVisible);
+    el.priceCubicWrapper.classList.toggle("hidden", !cubicVisible);
     el.stockPcsWrapper.classList.toggle("hidden", !pcsVisible);
     el.stockCubicWrapper.classList.toggle("hidden", !cubicVisible);
 
+    el.pricePcsInput.required = pcsVisible;
+    el.priceCubicInput.required = cubicVisible;
     el.stockPcsInput.required = pcsVisible;
     el.stockCubicInput.required = cubicVisible;
 
+    if (!pcsVisible) {
+        el.pricePcsInput.value = "";
+    }
+    if (!cubicVisible) {
+        el.priceCubicInput.value = "";
+    }
     if (!pcsVisible) {
         el.stockPcsInput.value = "";
     }
@@ -916,6 +968,14 @@ function initAdminForms() {
                 ? parseOptionalNumber(formData.get("stockCubicMeters"))
                 : null;
 
+            const pricePcs = (unitMode === "PCS_ONLY" || unitMode === "BOTH")
+                ? parseOptionalNumber(formData.get("pricePcs"))
+                : null;
+
+            const priceCubicMeters = (unitMode === "CUBIC_ONLY" || unitMode === "BOTH")
+                ? parseOptionalNumber(formData.get("priceCubicMeters"))
+                : null;
+
             if ((unitMode === "PCS_ONLY" || unitMode === "BOTH") && stockPcs === null) {
                 throw new Error("Укажите остаток в штуках");
             }
@@ -924,10 +984,20 @@ function initAdminForms() {
                 throw new Error("Укажите остаток в кубометрах");
             }
 
-            const price = Number(formData.get("price"));
-            const oldPrice = parseOptionalNumber(formData.get("oldPrice"));
+            if ((unitMode === "PCS_ONLY" || unitMode === "BOTH") && pricePcs === null) {
+                throw new Error("Укажите цену за штуку");
+            }
 
-            if (isFixPrice && (oldPrice === null || oldPrice <= price)) {
+            if ((unitMode === "CUBIC_ONLY" || unitMode === "BOTH") && priceCubicMeters === null) {
+                throw new Error("Укажите цену за кубометр");
+            }
+
+            const oldPrice = parseOptionalNumber(formData.get("oldPrice"));
+            const minPriceForValidation = unitMode === "BOTH"
+                ? Math.min(Number(pricePcs), Number(priceCubicMeters))
+                : Number(pricePcs ?? priceCubicMeters);
+
+            if (isFixPrice && (oldPrice === null || oldPrice <= minPriceForValidation)) {
                 throw new Error("Для Fix Price старая цена должна быть выше текущей");
             }
 
@@ -937,7 +1007,8 @@ function initAdminForms() {
                     name: formData.get("name"),
                     description: formData.get("description"),
                     imageUrl,
-                    price,
+                    pricePcs,
+                    priceCubicMeters,
                     oldPrice: isFixPrice ? oldPrice : null,
                     unitMode,
                     stockPcs,

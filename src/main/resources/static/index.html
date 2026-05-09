@@ -88,8 +88,11 @@
                         <label>Описание
                             <textarea name="description" required></textarea>
                         </label>
-                        <label>Цена (₽)
-                            <input name="price" type="number" step="0.01" min="0.01" required/>
+                        <label id="pricePcsWrapper">Цена за шт (₽)
+                            <input id="pricePcsInput" name="pricePcs" type="number" step="0.01" min="0.01"/>
+                        </label>
+                        <label id="priceCubicWrapper">Цена за куб.м (₽)
+                            <input id="priceCubicInput" name="priceCubicMeters" type="number" step="0.01" min="0.01"/>
                         </label>
                         <label>Раздел
                             <select id="sectionType" name="sectionType" required>

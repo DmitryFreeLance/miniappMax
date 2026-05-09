@@ -26,6 +26,12 @@ public class Product {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
 
+    @Column(name = "price_pcs", precision = 12, scale = 2)
+    private BigDecimal pricePcs;
+
+    @Column(name = "price_cubic_meters", precision = 12, scale = 2)
+    private BigDecimal priceCubicMeters;
+
     @Column(name = "old_price", precision = 12, scale = 2)
     private BigDecimal oldPrice;
 
@@ -105,6 +111,22 @@ public class Product {
 
     public void setOldPrice(BigDecimal oldPrice) {
         this.oldPrice = oldPrice;
+    }
+
+    public BigDecimal getPricePcs() {
+        return pricePcs;
+    }
+
+    public void setPricePcs(BigDecimal pricePcs) {
+        this.pricePcs = pricePcs;
+    }
+
+    public BigDecimal getPriceCubicMeters() {
+        return priceCubicMeters;
+    }
+
+    public void setPriceCubicMeters(BigDecimal priceCubicMeters) {
+        this.priceCubicMeters = priceCubicMeters;
     }
 
     public BigDecimal getStockPcs() {

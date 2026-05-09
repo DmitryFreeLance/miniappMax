@@ -58,7 +58,7 @@ public class OrderService {
             throw new BadRequestException("Товар недоступен для заказа");
         }
 
-        BigDecimal unitPrice = product.getPrice();
+        BigDecimal unitPrice = productService.resolveUnitPrice(product, request.getQuantityUnit());
         BigDecimal total = unitPrice.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
 
         productService.reserveStock(product, request.getQuantityUnit(), quantity);
