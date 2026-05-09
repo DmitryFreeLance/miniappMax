@@ -73,7 +73,12 @@ public class MaxBotClient {
                 )
         );
 
-        sendMessage(userId, payload);
+        try {
+            sendMessage(userId, payload);
+        } catch (Exception ex) {
+            log.warn("MAX open_app message failed for user {}: {}. Fallback to link-only message.", userId, ex.getMessage());
+            sendLinkOnlyMessage(userId, text, miniAppUrl);
+        }
     }
 
     public void subscribeWebhook(String webhookUrl, String secret) {
@@ -113,5 +118,28 @@ public class MaxBotClient {
                 .body(payload)
                 .retrieve()
                 .toBodilessEntity();
+    }
+
+    private void sendLinkOnlyMessage(Long userId, String text, String miniAppUrl) {
+        Map<String, Object> payload = Map.of(
+                "text", text + "\n" + miniAppUrl,
+                "attachments", List.of(
+                        Map.of(
+                                "type", "inline_keyboard",
+                                "payload", Map.of(
+                                        "buttons", List.of(
+                                                List.of(
+                                                        Map.of(
+                                                                "type", "link",
+                                                                "text", "Открыть mini app",
+                                                                "url", miniAppUrl
+                                                        )
+                                                )
+                                        )
+                                )
+                        )
+                )
+        );
+        sendMessage(userId, payload);
     }
 }

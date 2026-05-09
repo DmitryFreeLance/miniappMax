@@ -431,6 +431,10 @@ function switchTab(tabId) {
     }
 }
 
+function isTabActive(tabId) {
+    return document.getElementById(tabId)?.classList.contains("active");
+}
+
 function initTabs() {
     el.tabs.forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -1390,6 +1394,14 @@ async function init() {
 
     await bootstrapUser();
     await Promise.all([loadCatalog(), loadFixPrice(), loadInfo(), loadCheckoutConfig()]);
+
+    setInterval(() => {
+        if (!state.isAdmin || !isTabActive("admin-orders")) {
+            return;
+        }
+        loadAdminOrders().catch(() => {
+        });
+    }, 15000);
 }
 
 init().catch((error) => {
