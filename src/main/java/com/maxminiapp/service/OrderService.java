@@ -16,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -130,12 +132,7 @@ public class OrderService {
         }
 
         order = orderRepository.save(order);
-
-        try {
-            orderNotificationService.notifyAdminsAboutNewOrder(order);
-        } catch (Exception ex) {
-            log.warn("Failed to notify admins about order {}: {}", order.getId(), ex.getMessage());
-        }
+        scheduleAdminNotificationAfterCommit(order);
 
         return new CreateOrderResponse(
                 order.getId(),
@@ -190,5 +187,31 @@ public class OrderService {
             return fee.setScale(2, RoundingMode.HALF_UP);
         }
         return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private void scheduleAdminNotificationAfterCommit(Order order) {
+        if (order == null) {
+            return;
+        }
+
+        Runnable notifyTask = () -> {
+            try {
+                orderNotificationService.notifyAdminsAboutNewOrder(order);
+            } catch (Exception ex) {
+                log.warn("Failed to notify admins about order {}: {}", order.getId(), ex.getMessage());
+            }
+        };
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notifyTask.run();
+                }
+            });
+            return;
+        }
+
+        notifyTask.run();
     }
 }

@@ -361,7 +361,12 @@ function api(path, options = {}) {
         const contentType = res.headers.get("content-type") || "";
         const data = contentType.includes("application/json") ? await res.json() : await res.text();
         if (!res.ok) {
-            const message = data?.message || data || `Ошибка ${res.status}`;
+            let message = data?.message || data || `Ошибка ${res.status}`;
+            if (res.status === 413) {
+                message = "Файл слишком большой. Уменьшите фото и попробуйте снова.";
+            } else if (typeof message === "string" && message.includes("<html")) {
+                message = `Ошибка ${res.status}`;
+            }
             throw new Error(message);
         }
 

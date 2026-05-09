@@ -1,10 +1,14 @@
 server:
   port: ${SERVER_PORT:8080}
+  max-http-request-header-size: 16KB
 
 spring:
   datasource:
-    url: jdbc:sqlite:${APP_DB_PATH:app.db}
+    url: jdbc:sqlite:${APP_DB_PATH:app.db}?busy_timeout=${SQLITE_BUSY_TIMEOUT:10000}&journal_mode=WAL&synchronous=NORMAL
     driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: ${APP_DB_POOL_SIZE:1}
+      minimum-idle: 1
   jpa:
     database-platform: org.hibernate.community.dialect.SQLiteDialect
     hibernate:
@@ -13,6 +17,10 @@ spring:
     show-sql: false
   jackson:
     default-property-inclusion: non_null
+  servlet:
+    multipart:
+      max-file-size: ${APP_MAX_FILE_SIZE:20MB}
+      max-request-size: ${APP_MAX_REQUEST_SIZE:20MB}
 
 app:
   public-base-url: ${APP_PUBLIC_BASE_URL:http://localhost:8080}
