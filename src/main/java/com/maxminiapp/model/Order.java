@@ -1,6 +1,8 @@
 package com.maxminiapp.model;
 
+import com.maxminiapp.enums.DeliveryMethod;
 import com.maxminiapp.enums.OrderStatus;
+import com.maxminiapp.enums.PaymentMethod;
 import com.maxminiapp.enums.QuantityUnit;
 import jakarta.persistence.*;
 
@@ -33,6 +35,12 @@ public class Order {
     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;
 
+    @Column(name = "items_total", precision = 12, scale = 2)
+    private BigDecimal itemsTotal;
+
+    @Column(name = "delivery_fee", precision = 12, scale = 2)
+    private BigDecimal deliveryFee;
+
     @Column(name = "total_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalPrice;
 
@@ -44,6 +52,17 @@ public class Order {
 
     @Column(name = "address", nullable = false, length = 2000)
     private String address;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "delivery_method")
+    private DeliveryMethod deliveryMethod;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_method")
+    private PaymentMethod paymentMethod;
+
+    @Column(name = "payment_details_snapshot", length = 5000)
+    private String paymentDetailsSnapshot;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -128,6 +147,22 @@ public class Order {
         this.totalPrice = totalPrice;
     }
 
+    public BigDecimal getItemsTotal() {
+        return itemsTotal;
+    }
+
+    public void setItemsTotal(BigDecimal itemsTotal) {
+        this.itemsTotal = itemsTotal;
+    }
+
+    public BigDecimal getDeliveryFee() {
+        return deliveryFee;
+    }
+
+    public void setDeliveryFee(BigDecimal deliveryFee) {
+        this.deliveryFee = deliveryFee;
+    }
+
     public String getFullName() {
         return fullName;
     }
@@ -150,6 +185,30 @@ public class Order {
 
     public void setAddress(String address) {
         this.address = address;
+    }
+
+    public DeliveryMethod getDeliveryMethod() {
+        return deliveryMethod;
+    }
+
+    public void setDeliveryMethod(DeliveryMethod deliveryMethod) {
+        this.deliveryMethod = deliveryMethod;
+    }
+
+    public PaymentMethod getPaymentMethod() {
+        return paymentMethod;
+    }
+
+    public void setPaymentMethod(PaymentMethod paymentMethod) {
+        this.paymentMethod = paymentMethod;
+    }
+
+    public String getPaymentDetailsSnapshot() {
+        return paymentDetailsSnapshot;
+    }
+
+    public void setPaymentDetailsSnapshot(String paymentDetailsSnapshot) {
+        this.paymentDetailsSnapshot = paymentDetailsSnapshot;
     }
 
     public OrderStatus getStatus() {

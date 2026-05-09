@@ -7,11 +7,9 @@ docker run -d \
   -v "$(pwd)/data:/opt/app/data" \
   -e APP_PUBLIC_BASE_URL="http://localhost:8080" \
   -e APP_BOOTSTRAP_ADMIN_ID="1" \
-  -e APP_PAYMENT_MOCK_ENABLED="true" \
+  -e APP_DEFAULT_PAYMENT_DETAILS="Карта: 0000 0000 0000 0000 | Телефон: +7XXXXXXXXXX" \
+  -e APP_CITY_DELIVERY_FEE="1000.00" \
   -e MAX_BOT_TOKEN="" \
   -e MAX_WEBHOOK_SECRET="" \
   -e MAX_MINIAPP_URL="http://localhost:8080" \
-  -e YOOKASSA_SHOP_ID="" \
-  -e YOOKASSA_SECRET_KEY="" \
-  -e YOOKASSA_RETURN_URL="http://localhost:8080/?payment=done" \
   miniapp-max:latest

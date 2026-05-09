@@ -4,6 +4,7 @@ import com.maxminiapp.config.AppProperties;
 import com.maxminiapp.dto.*;
 import com.maxminiapp.exception.BadRequestException;
 import com.maxminiapp.model.AppUser;
+import com.maxminiapp.service.AppSettingsService;
 import com.maxminiapp.service.InfoPostService;
 import com.maxminiapp.service.OrderService;
 import com.maxminiapp.service.ProductService;
@@ -29,6 +30,7 @@ public class AdminController {
     private final ProductService productService;
     private final OrderService orderService;
     private final InfoPostService infoPostService;
+    private final AppSettingsService appSettingsService;
     private final AppProperties appProperties;
 
     public AdminController(
@@ -36,12 +38,14 @@ public class AdminController {
             ProductService productService,
             OrderService orderService,
             InfoPostService infoPostService,
+            AppSettingsService appSettingsService,
             AppProperties appProperties
     ) {
         this.userService = userService;
         this.productService = productService;
         this.orderService = orderService;
         this.infoPostService = infoPostService;
+        this.appSettingsService = appSettingsService;
         this.appProperties = appProperties;
     }
 
@@ -110,6 +114,24 @@ public class AdminController {
         requireAdmin(adminUserId);
         AppUser user = userService.grantAdmin(request.getMaxUserId());
         return toUserResponse(user);
+    }
+
+    @GetMapping("/settings/payment-details")
+    public PaymentDetailsResponse paymentDetails(
+            @RequestHeader(name = "X-User-Id", required = false) Long adminUserId
+    ) {
+        requireAdmin(adminUserId);
+        return new PaymentDetailsResponse(appSettingsService.getPaymentDetails(), appProperties.getCityDeliveryFee());
+    }
+
+    @PutMapping("/settings/payment-details")
+    public ActionResponse updatePaymentDetails(
+            @RequestHeader(name = "X-User-Id", required = false) Long adminUserId,
+            @RequestBody @Valid AdminPaymentDetailsRequest request
+    ) {
+        requireAdmin(adminUserId);
+        appSettingsService.setPaymentDetails(request.getPaymentDetails().trim());
+        return new ActionResponse("Данные для оплаты обновлены.");
     }
 
     @PostMapping("/info-posts")

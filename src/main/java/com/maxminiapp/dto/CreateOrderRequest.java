@@ -1,5 +1,7 @@
 package com.maxminiapp.dto;
 
+import com.maxminiapp.enums.DeliveryMethod;
+import com.maxminiapp.enums.PaymentMethod;
 import com.maxminiapp.enums.QuantityUnit;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -27,8 +29,13 @@ public class CreateOrderRequest {
     @NotBlank
     private String phone;
 
-    @NotBlank
     private String address;
+
+    @NotNull
+    private PaymentMethod paymentMethod;
+
+    @NotNull
+    private DeliveryMethod deliveryMethod;
 
     public Long getUserId() {
         return userId;
@@ -84,5 +91,21 @@ public class CreateOrderRequest {
 
     public void setAddress(String address) {
         this.address = address;
+    }
+
+    public PaymentMethod getPaymentMethod() {
+        return paymentMethod;
+    }
+
+    public void setPaymentMethod(PaymentMethod paymentMethod) {
+        this.paymentMethod = paymentMethod;
+    }
+
+    public DeliveryMethod getDeliveryMethod() {
+        return deliveryMethod;
+    }
+
+    public void setDeliveryMethod(DeliveryMethod deliveryMethod) {
+        this.deliveryMethod = deliveryMethod;
     }
 }

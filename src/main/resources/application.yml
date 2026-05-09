@@ -19,13 +19,9 @@ app:
   uploads-dir: ${APP_UPLOADS_DIR:uploads}
   bootstrap-admin-id: ${APP_BOOTSTRAP_ADMIN_ID:1}
   cors-origins: ${APP_CORS_ORIGINS:*}
-  payment:
-    mock-enabled: ${APP_PAYMENT_MOCK_ENABLED:false}
+  default-payment-details: ${APP_DEFAULT_PAYMENT_DETAILS:}
+  city-delivery-fee: ${APP_CITY_DELIVERY_FEE:1000.00}
   max:
     token: ${MAX_BOT_TOKEN:}
     webhook-secret: ${MAX_WEBHOOK_SECRET:}
     miniapp-url: ${MAX_MINIAPP_URL:http://localhost:8080}
-  yookassa:
-    shop-id: ${YOOKASSA_SHOP_ID:}
-    secret-key: ${YOOKASSA_SECRET_KEY:}
-    return-url: ${YOOKASSA_RETURN_URL:http://localhost:8080/?payment=done}

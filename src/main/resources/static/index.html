@@ -120,6 +120,18 @@
                     </form>
                 </article>
 
+                <article class="panel">
+                    <h3>Данные для оплаты</h3>
+                    <form id="paymentDetailsForm">
+                        <label>Реквизиты (карта/телефон)
+                            <textarea id="paymentDetailsInput" name="paymentDetails" required
+                                      placeholder="Карта: 0000 0000 0000 0000&#10;Телефон: +7XXXXXXXXXX&#10;Получатель: Иван И." ></textarea>
+                        </label>
+                        <button type="submit">Сохранить данные для оплаты</button>
+                    </form>
+                    <p class="panel-hint">Показывается клиенту при выборе оплаты «Сейчас (карта)».</p>
+                </article>
+
                 <article class="panel wide">
                     <h3>Управление товарами</h3>
                     <div class="manage-columns">
@@ -216,10 +228,52 @@
             <label>Телефон
                 <input id="orderPhone" required/>
             </label>
-            <label>Адрес доставки
+            <label>Адрес/комментарий
                 <textarea id="orderAddress" required></textarea>
             </label>
-            <button id="submitOrder">Перейти к оплате</button>
+            <fieldset class="choice-group">
+                <legend>Доставка</legend>
+                <label class="choice-option">
+                    <input type="radio" name="deliveryMethod" value="CITY_DELIVERY" checked/>
+                    Доставка по городу (+1000 ₽)
+                </label>
+                <label class="choice-option">
+                    <input type="radio" name="deliveryMethod" value="PICKUP"/>
+                    Самовывоз
+                </label>
+                <label class="choice-option">
+                    <input type="radio" name="deliveryMethod" value="OTHER"/>
+                    Другая доставка (обсуждается)
+                </label>
+            </fieldset>
+
+            <fieldset class="choice-group">
+                <legend>Как удобнее оплатить</legend>
+                <label class="choice-option">
+                    <input type="radio" name="paymentMethod" value="CARD_NOW" checked/>
+                    Сейчас (карта)
+                </label>
+                <label class="choice-option">
+                    <input type="radio" name="paymentMethod" value="ON_DELIVERY"/>
+                    При получении
+                </label>
+            </fieldset>
+
+            <div class="order-summary">
+                <div class="summary-row"><span>Товары</span><strong id="orderItemsTotal">-</strong></div>
+                <div class="summary-row"><span>Доставка</span><strong id="orderDeliveryFee">-</strong></div>
+                <div class="summary-row total"><span>Итого</span><strong id="orderTotal">-</strong></div>
+            </div>
+
+            <button id="submitOrder">Оформить заказ</button>
+        </div>
+
+        <div id="orderStep3" class="hidden">
+            <h3>Оплата сейчас</h3>
+            <p class="pay-note">Переведите <strong id="payTotal">-</strong> по реквизитам ниже и нажмите «Готово».</p>
+            <pre id="paymentDetailsText" class="payment-details"></pre>
+            <button id="confirmPaidBtn">Готово</button>
+            <button id="backToStep2Btn" type="button" class="btn-secondary">Назад</button>
         </div>
 
         <p id="orderMessage" class="status"></p>

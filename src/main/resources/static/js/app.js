@@ -11,7 +11,13 @@ const state = {
     fixOnlyAvailable: false,
     selectedProduct: null,
     orderQuantity: null,
-    orderUnit: "PCS"
+    orderUnit: "PCS",
+    orderDeliveryMethod: "CITY_DELIVERY",
+    orderPaymentMethod: "CARD_NOW",
+    orderItemsTotal: null,
+    orderDeliveryFee: null,
+    orderTotal: null,
+    cityDeliveryFee: 1000
 };
 
 const el = {
@@ -54,12 +60,20 @@ const el = {
     closeOrderModal: document.getElementById("closeOrderModal"),
     orderStep1: document.getElementById("orderStep1"),
     orderStep2: document.getElementById("orderStep2"),
+    orderStep3: document.getElementById("orderStep3"),
     orderQuantity: document.getElementById("orderQuantity"),
     orderUnit: document.getElementById("orderUnit"),
     goStep2: document.getElementById("goStep2"),
     orderFullName: document.getElementById("orderFullName"),
     orderPhone: document.getElementById("orderPhone"),
     orderAddress: document.getElementById("orderAddress"),
+    orderItemsTotal: document.getElementById("orderItemsTotal"),
+    orderDeliveryFee: document.getElementById("orderDeliveryFee"),
+    orderTotal: document.getElementById("orderTotal"),
+    payTotal: document.getElementById("payTotal"),
+    paymentDetailsText: document.getElementById("paymentDetailsText"),
+    confirmPaidBtn: document.getElementById("confirmPaidBtn"),
+    backToStep2Btn: document.getElementById("backToStep2Btn"),
     submitOrder: document.getElementById("submitOrder"),
     orderMessage: document.getElementById("orderMessage"),
 
@@ -78,6 +92,8 @@ const el = {
     stockCubicInput: document.getElementById("stockCubicInput"),
 
     postForm: document.getElementById("postForm"),
+    paymentDetailsForm: document.getElementById("paymentDetailsForm"),
+    paymentDetailsInput: document.getElementById("paymentDetailsInput"),
     addAdminForm: document.getElementById("addAdminForm"),
     adminsList: document.getElementById("adminsList"),
     usersList: document.getElementById("usersList")
@@ -151,6 +167,57 @@ function getPriceSummaryText(product) {
     return `${left} · ${right}`;
 }
 
+function paymentMethodLabel(method) {
+    if (method === "CARD_NOW") {
+        return "Сейчас (карта)";
+    }
+    if (method === "ON_DELIVERY") {
+        return "При получении";
+    }
+    return "-";
+}
+
+function deliveryMethodLabel(method) {
+    if (method === "CITY_DELIVERY") {
+        return "Доставка по городу";
+    }
+    if (method === "PICKUP") {
+        return "Самовывоз";
+    }
+    if (method === "OTHER") {
+        return "Другая доставка";
+    }
+    return "-";
+}
+
+function deliveryFeeByMethod(method) {
+    return method === "CITY_DELIVERY" ? Number(state.cityDeliveryFee || 1000) : 0;
+}
+
+function readRadioValue(name) {
+    const node = document.querySelector(`input[name="${name}"]:checked`);
+    return node ? node.value : null;
+}
+
+function formatAddressForDelivery(method, rawAddress) {
+    const trimmed = (rawAddress || "").trim();
+    if (method === "PICKUP") {
+        return trimmed || "Самовывоз";
+    }
+    if (method === "OTHER") {
+        return trimmed || "Другая доставка (обсуждается)";
+    }
+    return trimmed;
+}
+
+function calculateOrderTotals(product, quantity, unit, deliveryMethod) {
+    const unitPrice = Number(getUnitPriceValue(product, unit));
+    const deliveryFee = Number(deliveryFeeByMethod(deliveryMethod));
+    const itemsTotal = Number((unitPrice * quantity).toFixed(2));
+    const total = Number((itemsTotal + deliveryFee).toFixed(2));
+    return {itemsTotal, deliveryFee, total};
+}
+
 function orderStatusLabel(status) {
     if (status === "PAID") {
         return "Оплачен";
@@ -175,6 +242,23 @@ function orderStatusClass(status) {
         return "cancelled";
     }
     return "";
+}
+
+function orderDisplayStatus(order) {
+    if (order?.paymentMethod === "ON_DELIVERY") {
+        return "Оплата при получении";
+    }
+    if (order?.paymentMethod === "CARD_NOW") {
+        return "Оплата сейчас (перевод)";
+    }
+    return orderStatusLabel(order?.status);
+}
+
+function orderDisplayStatusClass(order) {
+    if (order?.paymentMethod === "CARD_NOW") {
+        return "paid";
+    }
+    return orderStatusClass(order?.status);
 }
 
 function formatDateTime(value) {
@@ -531,6 +615,18 @@ async function loadInfo() {
     });
 }
 
+async function loadCheckoutConfig() {
+    try {
+        const config = await api("/api/orders/payment-details");
+        const fee = Number(config?.cityDeliveryFee);
+        if (Number.isFinite(fee) && fee >= 0) {
+            state.cityDeliveryFee = fee;
+        }
+    } catch {
+        state.cityDeliveryFee = 1000;
+    }
+}
+
 function openProduct(product) {
     state.selectedProduct = product;
     el.modalImage.src = product.imageUrl;
@@ -563,6 +659,107 @@ function configureOrderUnitSelect(product) {
     el.orderUnit.disabled = allowed.length === 1;
 }
 
+function setRadioValue(name, value) {
+    const target = document.querySelector(`input[name="${name}"][value="${value}"]`);
+    if (target) {
+        target.checked = true;
+    }
+}
+
+function syncOrderAddressByDeliveryMethod() {
+    const deliveryMethod = readRadioValue("deliveryMethod") || "CITY_DELIVERY";
+    if (deliveryMethod === "CITY_DELIVERY") {
+        el.orderAddress.required = true;
+        el.orderAddress.placeholder = "Укажите адрес доставки";
+        return;
+    }
+    if (deliveryMethod === "PICKUP") {
+        el.orderAddress.required = false;
+        el.orderAddress.placeholder = "Можно оставить пустым";
+        return;
+    }
+    el.orderAddress.required = false;
+    el.orderAddress.placeholder = "Комментарий по доставке (опционально)";
+}
+
+function updateOrderSummary() {
+    if (!state.selectedProduct || !state.orderQuantity) {
+        el.orderItemsTotal.textContent = "-";
+        el.orderDeliveryFee.textContent = "-";
+        el.orderTotal.textContent = "-";
+        return;
+    }
+
+    const deliveryMethod = readRadioValue("deliveryMethod") || "CITY_DELIVERY";
+    const paymentMethod = readRadioValue("paymentMethod") || "CARD_NOW";
+    const totals = calculateOrderTotals(state.selectedProduct, state.orderQuantity, state.orderUnit, deliveryMethod);
+
+    state.orderDeliveryMethod = deliveryMethod;
+    state.orderPaymentMethod = paymentMethod;
+    state.orderItemsTotal = totals.itemsTotal;
+    state.orderDeliveryFee = totals.deliveryFee;
+    state.orderTotal = totals.total;
+
+    el.orderItemsTotal.textContent = money(totals.itemsTotal);
+    el.orderDeliveryFee.textContent = totals.deliveryFee > 0 ? money(totals.deliveryFee) : "0 ₽";
+    el.orderTotal.textContent = money(totals.total);
+    el.payTotal.textContent = money(totals.total);
+}
+
+function collectOrderCustomerData() {
+    const fullName = el.orderFullName.value.trim();
+    const phone = el.orderPhone.value.trim();
+    const deliveryMethod = state.orderDeliveryMethod || readRadioValue("deliveryMethod") || "CITY_DELIVERY";
+    const address = formatAddressForDelivery(deliveryMethod, el.orderAddress.value);
+
+    if (!fullName || !phone) {
+        throw new Error("Заполните ФИО и телефон");
+    }
+
+    if (deliveryMethod === "CITY_DELIVERY" && !address) {
+        throw new Error("Укажите адрес доставки");
+    }
+
+    return {fullName, phone, deliveryMethod, address};
+}
+
+async function submitOrderRequest(paymentMethodOverride) {
+    if (!state.authenticated || !state.userId) {
+        notify("Откройте mini app через MAX.");
+        return;
+    }
+
+    try {
+        const customerData = collectOrderCustomerData();
+        const deliveryMethod = customerData.deliveryMethod;
+        const paymentMethod = paymentMethodOverride || state.orderPaymentMethod || readRadioValue("paymentMethod") || "CARD_NOW";
+        const response = await api("/api/orders", {
+            method: "POST",
+            body: JSON.stringify({
+                productId: state.selectedProduct.id,
+                quantity: state.orderQuantity,
+                quantityUnit: state.orderUnit,
+                fullName: customerData.fullName,
+                phone: customerData.phone,
+                address: customerData.address,
+                deliveryMethod,
+                paymentMethod
+            })
+        });
+
+        el.orderStep1.classList.add("hidden");
+        el.orderStep2.classList.add("hidden");
+        el.orderStep3.classList.add("hidden");
+        el.orderMessage.textContent = response.message || "Заказ создан. С вами свяжется менеджер.";
+        await Promise.all([loadCatalog(), loadFixPrice()]);
+        if (state.isAdmin) {
+            await loadAdminOrders();
+        }
+    } catch (error) {
+        el.orderMessage.textContent = error.message;
+    }
+}
+
 function openOrder() {
     if (!state.authenticated || !state.userId) {
         notify("Оформление заказа доступно только при открытии mini app из MAX.");
@@ -577,8 +774,13 @@ function openOrder() {
     el.orderModal.classList.remove("hidden");
     el.orderStep1.classList.remove("hidden");
     el.orderStep2.classList.add("hidden");
+    el.orderStep3.classList.add("hidden");
     el.orderMessage.textContent = "";
     el.orderQuantity.value = "";
+    setRadioValue("deliveryMethod", "CITY_DELIVERY");
+    setRadioValue("paymentMethod", "CARD_NOW");
+    syncOrderAddressByDeliveryMethod();
+    updateOrderSummary();
 }
 
 function closeOrder() {
@@ -602,49 +804,68 @@ function initOrderFlow() {
         state.orderUnit = el.orderUnit.value;
         el.orderStep1.classList.add("hidden");
         el.orderStep2.classList.remove("hidden");
+        el.orderStep3.classList.add("hidden");
+        syncOrderAddressByDeliveryMethod();
+        updateOrderSummary();
+    });
+
+    el.orderUnit.addEventListener("change", () => {
+        state.orderUnit = el.orderUnit.value;
+        updateOrderSummary();
+    });
+
+    document.querySelectorAll('input[name="deliveryMethod"]').forEach((input) => {
+        input.addEventListener("change", () => {
+            syncOrderAddressByDeliveryMethod();
+            updateOrderSummary();
+        });
+    });
+
+    document.querySelectorAll('input[name="paymentMethod"]').forEach((input) => {
+        input.addEventListener("change", updateOrderSummary);
     });
 
     el.submitOrder.addEventListener("click", async () => {
-        if (!state.authenticated || !state.userId) {
-            notify("Откройте mini app через MAX.");
+        updateOrderSummary();
+        try {
+            collectOrderCustomerData();
+        } catch (error) {
+            el.orderMessage.textContent = error.message;
             return;
         }
-
-        const fullName = el.orderFullName.value.trim();
-        const phone = el.orderPhone.value.trim();
-        const address = el.orderAddress.value.trim();
-
-        if (!fullName || !phone || !address) {
-            notify("Заполните ФИО, телефон и адрес доставки");
+        if ((state.orderPaymentMethod || "CARD_NOW") === "ON_DELIVERY") {
+            await submitOrderRequest("ON_DELIVERY");
             return;
         }
 
         try {
-            const response = await api("/api/orders", {
-                method: "POST",
-                body: JSON.stringify({
-                    productId: state.selectedProduct.id,
-                    quantity: state.orderQuantity,
-                    quantityUnit: state.orderUnit,
-                    fullName,
-                    phone,
-                    address
-                })
-            });
-
-            if (response.paymentUrl) {
-                el.orderMessage.textContent = `Сумма: ${money(response.totalPrice)}. Открываем оплату...`;
-                if (window.WebApp?.openLink) {
-                    window.WebApp.openLink(response.paymentUrl);
-                } else {
-                    window.open(response.paymentUrl, "_blank", "noopener,noreferrer");
-                }
-            } else {
-                el.orderMessage.textContent = "Заказ создан. С вами свяжется менеджер.";
+            const paymentDetailsResponse = await api("/api/orders/payment-details");
+            const fee = Number(paymentDetailsResponse.cityDeliveryFee);
+            if (Number.isFinite(fee) && fee >= 0) {
+                state.cityDeliveryFee = fee;
+                updateOrderSummary();
             }
+            const details = (paymentDetailsResponse.paymentDetails || "").trim();
+            if (!details) {
+                throw new Error("Админ еще не заполнил данные для оплаты");
+            }
+
+            el.paymentDetailsText.textContent = details;
+            el.orderStep2.classList.add("hidden");
+            el.orderStep3.classList.remove("hidden");
+            el.orderMessage.textContent = "";
         } catch (error) {
             el.orderMessage.textContent = error.message;
         }
+    });
+
+    el.confirmPaidBtn.addEventListener("click", async () => {
+        await submitOrderRequest("CARD_NOW");
+    });
+
+    el.backToStep2Btn.addEventListener("click", () => {
+        el.orderStep3.classList.add("hidden");
+        el.orderStep2.classList.remove("hidden");
     });
 
     el.closeOrderModal.addEventListener("click", closeOrder);
@@ -770,11 +991,12 @@ async function loadAdminData() {
     }
 
     try {
-        const [admins, users, products, posts] = await Promise.all([
+        const [admins, users, products, posts, paymentSettings] = await Promise.all([
             api("/api/admin/admins"),
             api("/api/admin/users"),
             api("/api/admin/products"),
-            api("/api/admin/info-posts")
+            api("/api/admin/info-posts"),
+            api("/api/admin/settings/payment-details")
         ]);
 
         renderSimpleList(
@@ -789,12 +1011,22 @@ async function loadAdminData() {
 
         renderAdminProducts(products);
         renderAdminPosts(posts);
+        if (el.paymentDetailsInput) {
+            el.paymentDetailsInput.value = paymentSettings.paymentDetails || "";
+        }
+        const fee = Number(paymentSettings.cityDeliveryFee);
+        if (Number.isFinite(fee) && fee >= 0) {
+            state.cityDeliveryFee = fee;
+        }
     } catch (error) {
         renderSimpleList(el.adminsList, [`Ошибка: ${error.message}`]);
         renderSimpleList(el.usersList, []);
         el.adminCatalogProducts.innerHTML = '<div class="empty">Ошибка загрузки товаров</div>';
         el.adminFixPriceProducts.innerHTML = '<div class="empty">Ошибка загрузки товаров</div>';
         el.adminPostsList.innerHTML = '<div class="empty">Ошибка загрузки постов</div>';
+        if (el.paymentDetailsInput) {
+            el.paymentDetailsInput.value = "";
+        }
     }
 }
 
@@ -810,12 +1042,12 @@ function renderAdminOrders(orders) {
     el.adminOrdersEmpty.classList.add("hidden");
 
     const markup = orders.map((order) => {
-        const statusClass = orderStatusClass(order.status);
+        const statusClass = orderDisplayStatusClass(order);
         return `
             <article class="order-card">
                 <div class="order-head">
                     <h3 class="order-title">#${order.id} · ${escapeHtml(order.productName)}</h3>
-                    <span class="order-status ${statusClass}">${escapeHtml(orderStatusLabel(order.status))}</span>
+                    <span class="order-status ${statusClass}">${escapeHtml(orderDisplayStatus(order))}</span>
                 </div>
                 <div class="order-head">
                     <span class="order-time">Создан: ${escapeHtml(formatDateTime(order.createdAt))}</span>
@@ -827,7 +1059,15 @@ function renderAdminOrders(orders) {
                         <p class="order-value">${escapeHtml(order.quantity)} ${escapeHtml(unitLabel(order.quantityUnit))}</p>
                     </div>
                     <div class="order-cell">
-                        <p class="order-label">Сумма</p>
+                        <p class="order-label">Товары</p>
+                        <p class="order-value">${escapeHtml(money(order.itemsTotal ?? order.totalPrice))}</p>
+                    </div>
+                    <div class="order-cell">
+                        <p class="order-label">Доставка</p>
+                        <p class="order-value">${escapeHtml(deliveryMethodLabel(order.deliveryMethod))} · ${escapeHtml(money(order.deliveryFee || 0))}</p>
+                    </div>
+                    <div class="order-cell">
+                        <p class="order-label">Итого</p>
                         <p class="order-value">${escapeHtml(money(order.totalPrice))}</p>
                     </div>
                     <div class="order-cell">
@@ -844,7 +1084,11 @@ function renderAdminOrders(orders) {
                     </div>
                     <div class="order-cell">
                         <p class="order-label">Оплата</p>
-                        <p class="order-value">${escapeHtml(order.paymentId || "ожидается")}</p>
+                        <p class="order-value">${escapeHtml(paymentMethodLabel(order.paymentMethod))}</p>
+                    </div>
+                    <div class="order-cell">
+                        <p class="order-label">Реквизиты (снимок)</p>
+                        <p class="order-value">${escapeHtml((order.paymentDetailsSnapshot || "-").replace(/\n/g, " | "))}</p>
                     </div>
                 </div>
             </article>
@@ -1028,6 +1272,31 @@ function initAdminForms() {
         }
     });
 
+    el.paymentDetailsForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        if (!state.isAdmin) {
+            notify("Недостаточно прав для изменения реквизитов оплаты");
+            return;
+        }
+
+        const paymentDetails = (el.paymentDetailsInput.value || "").trim();
+        if (!paymentDetails) {
+            notify("Введите данные для оплаты");
+            return;
+        }
+
+        try {
+            const result = await api("/api/admin/settings/payment-details", {
+                method: "PUT",
+                body: JSON.stringify({paymentDetails})
+            });
+            notify(result.message || "Данные для оплаты обновлены");
+        } catch (error) {
+            notify(error.message);
+        }
+    });
+
     el.postForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
@@ -1120,7 +1389,7 @@ async function init() {
     initAdminForms();
 
     await bootstrapUser();
-    await Promise.all([loadCatalog(), loadFixPrice(), loadInfo()]);
+    await Promise.all([loadCatalog(), loadFixPrice(), loadInfo(), loadCheckoutConfig()]);
 }
 
 init().catch((error) => {

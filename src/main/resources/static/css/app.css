@@ -692,6 +692,97 @@ button:hover {
     font-size: 13px;
 }
 
+.panel-hint {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.choice-group {
+    margin: 10px 0;
+    padding: 10px;
+    border: 1px solid #d8e4df;
+    border-radius: 12px;
+    background: #f8fbfa;
+}
+
+.choice-group legend {
+    padding: 0 5px;
+    color: #34545f;
+    font-weight: 700;
+    font-size: 13px;
+}
+
+.choice-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+    color: #2a4650;
+}
+
+.choice-option:last-child {
+    margin-bottom: 0;
+}
+
+.choice-option input[type="radio"] {
+    width: auto;
+    margin: 0;
+}
+
+.order-summary {
+    margin-top: 10px;
+    border: 1px dashed #cfe0d8;
+    border-radius: 12px;
+    background: #f8fcfa;
+    padding: 10px;
+}
+
+.summary-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    color: #2f4f5a;
+}
+
+.summary-row + .summary-row {
+    margin-top: 7px;
+}
+
+.summary-row.total {
+    padding-top: 7px;
+    border-top: 1px solid #d9e6e1;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+.pay-note {
+    margin: 8px 0 10px;
+    line-height: 1.45;
+}
+
+.payment-details {
+    margin: 0;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid #d8e3ef;
+    background: #f6f9ff;
+    white-space: pre-wrap;
+    font-family: inherit;
+}
+
+.btn-secondary {
+    margin-top: 8px;
+    background: #e9f0f2;
+    color: #2c4a56;
+}
+
+.btn-secondary:hover {
+    background: #dbe7ec;
+}
+
 .empty {
     background: var(--surface);
     padding: 14px;

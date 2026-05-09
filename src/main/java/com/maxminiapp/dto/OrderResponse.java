@@ -1,6 +1,8 @@
 package com.maxminiapp.dto;
 
+import com.maxminiapp.enums.DeliveryMethod;
 import com.maxminiapp.enums.OrderStatus;
+import com.maxminiapp.enums.PaymentMethod;
 import com.maxminiapp.enums.QuantityUnit;
 
 import java.math.BigDecimal;
@@ -14,13 +16,16 @@ public record OrderResponse(
         BigDecimal quantity,
         QuantityUnit quantityUnit,
         BigDecimal unitPrice,
+        BigDecimal itemsTotal,
+        BigDecimal deliveryFee,
         BigDecimal totalPrice,
+        DeliveryMethod deliveryMethod,
+        PaymentMethod paymentMethod,
         String fullName,
         String phone,
         String address,
         OrderStatus status,
-        String paymentId,
-        String paymentUrl,
+        String paymentDetailsSnapshot,
         LocalDateTime createdAt,
         LocalDateTime paidAt
 ) {

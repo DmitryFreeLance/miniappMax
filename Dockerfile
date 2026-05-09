@@ -19,7 +19,6 @@ ENV SERVER_PORT=8080 \
     APP_DB_PATH=/opt/app/data/app.db \
     APP_UPLOADS_DIR=/opt/app/data/uploads \
     APP_PUBLIC_BASE_URL=http://localhost:8080 \
-    APP_BOOTSTRAP_ADMIN_ID=1 \
-    APP_PAYMENT_MOCK_ENABLED=true
+    APP_BOOTSTRAP_ADMIN_ID=1
 
 ENTRYPOINT ["java", "-jar", "/opt/app/app.jar"]

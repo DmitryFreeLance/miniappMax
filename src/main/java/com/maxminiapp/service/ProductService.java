@@ -114,12 +114,7 @@ public class ProductService {
                 throw new BadRequestException("Для раздела Fix Price нужно указать старую цену");
             }
 
-            if (unitMode == UnitMode.BOTH) {
-                if (request.getOldPrice().compareTo(pricePcs) <= 0
-                        || request.getOldPrice().compareTo(priceCubicMeters) <= 0) {
-                    throw new BadRequestException("Старая цена должна быть больше цен за шт и куб.м");
-                }
-            } else if (request.getOldPrice().compareTo(primaryPrice) <= 0) {
+            if (request.getOldPrice().compareTo(primaryPrice) <= 0) {
                 throw new BadRequestException("Старая цена должна быть больше текущей цены");
             }
         }

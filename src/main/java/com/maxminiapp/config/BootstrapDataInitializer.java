@@ -7,6 +7,7 @@ import com.maxminiapp.model.Product;
 import com.maxminiapp.repository.AppUserRepository;
 import com.maxminiapp.repository.InfoPostRepository;
 import com.maxminiapp.repository.ProductRepository;
+import com.maxminiapp.service.AppSettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -27,23 +28,27 @@ public class BootstrapDataInitializer implements CommandLineRunner {
     private final AppUserRepository appUserRepository;
     private final ProductRepository productRepository;
     private final InfoPostRepository infoPostRepository;
+    private final AppSettingsService appSettingsService;
 
     public BootstrapDataInitializer(
             AppProperties appProperties,
             AppUserRepository appUserRepository,
             ProductRepository productRepository,
-            InfoPostRepository infoPostRepository
+            InfoPostRepository infoPostRepository,
+            AppSettingsService appSettingsService
     ) {
         this.appProperties = appProperties;
         this.appUserRepository = appUserRepository;
         this.productRepository = productRepository;
         this.infoPostRepository = infoPostRepository;
+        this.appSettingsService = appSettingsService;
     }
 
     @Override
     public void run(String... args) throws Exception {
         Files.createDirectories(Path.of(appProperties.getUploadsDir()));
         normalizeExistingProducts();
+        appSettingsService.seedPaymentDetailsIfEmpty(appProperties.getDefaultPaymentDetails());
 
         if (appProperties.getBootstrapAdminId() != null) {
             appUserRepository.findByMaxUserId(appProperties.getBootstrapAdminId())

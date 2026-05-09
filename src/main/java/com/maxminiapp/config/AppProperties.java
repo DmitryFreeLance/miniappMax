@@ -2,6 +2,8 @@ package com.maxminiapp.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.math.BigDecimal;
+
 @ConfigurationProperties(prefix = "app")
 public class AppProperties {
 
@@ -9,9 +11,9 @@ public class AppProperties {
     private String uploadsDir;
     private Long bootstrapAdminId;
     private String corsOrigins;
-    private final Payment payment = new Payment();
+    private String defaultPaymentDetails;
+    private BigDecimal cityDeliveryFee = new BigDecimal("1000.00");
     private final Max max = new Max();
-    private final Yookassa yookassa = new Yookassa();
 
     public String getPublicBaseUrl() {
         return publicBaseUrl;
@@ -45,28 +47,24 @@ public class AppProperties {
         this.corsOrigins = corsOrigins;
     }
 
-    public Payment getPayment() {
-        return payment;
+    public String getDefaultPaymentDetails() {
+        return defaultPaymentDetails;
+    }
+
+    public void setDefaultPaymentDetails(String defaultPaymentDetails) {
+        this.defaultPaymentDetails = defaultPaymentDetails;
+    }
+
+    public BigDecimal getCityDeliveryFee() {
+        return cityDeliveryFee;
+    }
+
+    public void setCityDeliveryFee(BigDecimal cityDeliveryFee) {
+        this.cityDeliveryFee = cityDeliveryFee;
     }
 
     public Max getMax() {
         return max;
-    }
-
-    public Yookassa getYookassa() {
-        return yookassa;
-    }
-
-    public static class Payment {
-        private boolean mockEnabled;
-
-        public boolean isMockEnabled() {
-            return mockEnabled;
-        }
-
-        public void setMockEnabled(boolean mockEnabled) {
-            this.mockEnabled = mockEnabled;
-        }
     }
 
     public static class Max {
@@ -99,33 +97,4 @@ public class AppProperties {
         }
     }
 
-    public static class Yookassa {
-        private String shopId;
-        private String secretKey;
-        private String returnUrl;
-
-        public String getShopId() {
-            return shopId;
-        }
-
-        public void setShopId(String shopId) {
-            this.shopId = shopId;
-        }
-
-        public String getSecretKey() {
-            return secretKey;
-        }
-
-        public void setSecretKey(String secretKey) {
-            this.secretKey = secretKey;
-        }
-
-        public String getReturnUrl() {
-            return returnUrl;
-        }
-
-        public void setReturnUrl(String returnUrl) {
-            this.returnUrl = returnUrl;
-        }
-    }
 }
