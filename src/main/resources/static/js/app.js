@@ -101,6 +101,16 @@ function unitModeLabel(unitMode) {
     return "шт + куб.м";
 }
 
+function unitPriceSuffixByMode(unitMode) {
+    if (unitMode === "PCS_ONLY") {
+        return " / шт";
+    }
+    if (unitMode === "CUBIC_ONLY") {
+        return " / куб.м";
+    }
+    return " / шт или куб.м";
+}
+
 function orderStatusLabel(status) {
     if (status === "PAID") {
         return "Оплачен";
@@ -484,11 +494,12 @@ function openProduct(product) {
     el.modalImage.src = product.imageUrl;
     el.modalTitle.textContent = product.name;
     el.modalDescription.textContent = product.description;
-    el.modalPrice.textContent = money(product.price);
+    const unitSuffix = unitPriceSuffixByMode(product.unitMode);
+    el.modalPrice.textContent = `${money(product.price)}${unitSuffix}`;
 
     if (product.fixPrice && product.oldPrice) {
         el.modalOldPriceLine.classList.remove("hidden");
-        el.modalOldPrice.textContent = money(product.oldPrice);
+        el.modalOldPrice.textContent = `${money(product.oldPrice)}${unitSuffix}`;
     } else {
         el.modalOldPriceLine.classList.add("hidden");
         el.modalOldPrice.textContent = "";
