@@ -7,6 +7,7 @@ import com.maxminiapp.enums.QuantityUnit;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record OrderResponse(
         Long id,
@@ -26,6 +27,10 @@ public record OrderResponse(
         String address,
         OrderStatus status,
         String paymentDetailsSnapshot,
+        boolean accepted,
+        String deliveryEta,
+        LocalDateTime acceptedAt,
+        List<OrderItemResponse> items,
         LocalDateTime createdAt,
         LocalDateTime paidAt
 ) {

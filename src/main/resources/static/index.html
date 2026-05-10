@@ -23,6 +23,10 @@
     <nav class="tabs" id="tabsNav">
         <button class="tab active" data-tab="catalog">Каталог</button>
         <button class="tab" data-tab="fix-price">Fix Price 🔥</button>
+        <button class="tab tab-cart" data-tab="cart">
+            Корзина
+            <span id="cartTabBadge" class="tab-badge hidden">0</span>
+        </button>
         <button class="tab" data-tab="info">Общая информация</button>
         <button class="tab hidden" data-tab="admin" id="adminTabBtn">Админка</button>
         <button class="tab hidden" data-tab="admin-orders" id="adminOrdersTabBtn">Заказы</button>
@@ -59,6 +63,74 @@
             </div>
             <div id="fixPriceGrid" class="catalog-grid"></div>
             <div id="fixPriceEmpty" class="empty hidden">Товаров со скидкой пока нет.</div>
+        </section>
+
+        <section id="cart" class="tab-content">
+            <div class="section-head">
+                <h2>Корзина</h2>
+                <p>Проверьте позиции и оформите заказ одним пакетом.</p>
+            </div>
+            <div id="cartItems" class="cart-list"></div>
+            <div id="cartEmpty" class="empty">Корзина пуста. Добавьте товары из каталога.</div>
+
+            <div id="cartCheckoutPanel" class="panel hidden">
+                <h3>Оформление заказа</h3>
+                <label>ФИО
+                    <input id="cartFullName" required/>
+                </label>
+                <label>Телефон
+                    <input id="cartPhone" required/>
+                </label>
+                <label>Адрес/комментарий
+                    <textarea id="cartAddress"></textarea>
+                </label>
+
+                <fieldset class="choice-group">
+                    <legend>Доставка</legend>
+                    <label class="choice-option">
+                        <input type="radio" name="cartDeliveryMethod" value="CITY_DELIVERY" checked/>
+                        Доставка по городу (+1000 ₽)
+                    </label>
+                    <label class="choice-option">
+                        <input type="radio" name="cartDeliveryMethod" value="PICKUP"/>
+                        Самовывоз
+                    </label>
+                    <label class="choice-option">
+                        <input type="radio" name="cartDeliveryMethod" value="OTHER"/>
+                        Другая доставка (обсуждается)
+                    </label>
+                </fieldset>
+
+                <fieldset class="choice-group">
+                    <legend>Как удобнее оплатить</legend>
+                    <label class="choice-option">
+                        <input type="radio" name="cartPaymentMethod" value="CARD_NOW" checked/>
+                        Сейчас (карта)
+                    </label>
+                    <label class="choice-option">
+                        <input type="radio" name="cartPaymentMethod" value="ON_DELIVERY"/>
+                        При получении
+                    </label>
+                </fieldset>
+
+                <div class="order-summary">
+                    <div class="summary-row"><span>Товары</span><strong id="cartItemsTotal">-</strong></div>
+                    <div class="summary-row"><span>Доставка</span><strong id="cartDeliveryFee">-</strong></div>
+                    <div class="summary-row total"><span>Итого</span><strong id="cartTotal">-</strong></div>
+                </div>
+
+                <button id="cartCheckoutBtn">Оформить заказ</button>
+
+                <div id="cartPaymentStep" class="payment-step hidden">
+                    <h4>Оплата сейчас</h4>
+                    <p class="pay-note">Переведите <strong id="cartPayTotal">-</strong> по реквизитам ниже и нажмите «Готово».</p>
+                    <pre id="cartPaymentDetailsText" class="payment-details"></pre>
+                    <button id="cartConfirmPaidBtn">Готово</button>
+                    <button id="cartBackFromPaymentBtn" type="button" class="btn-secondary">Назад</button>
+                </div>
+
+                <p id="cartMessage" class="status"></p>
+            </div>
         </section>
 
         <section id="info" class="tab-content">
@@ -125,7 +197,7 @@
                     <form id="paymentDetailsForm">
                         <label>Реквизиты (карта/телефон)
                             <textarea id="paymentDetailsInput" name="paymentDetails" required
-                                      placeholder="Карта: 0000 0000 0000 0000&#10;Телефон: +7XXXXXXXXXX&#10;Получатель: Иван И." ></textarea>
+                                      placeholder="Карта: 0000 0000 0000 0000&#10;Телефон: +7XXXXXXXXXX&#10;Получатель: Иван И."></textarea>
                         </label>
                         <button type="submit">Сохранить данные для оплаты</button>
                     </form>
@@ -200,84 +272,15 @@
         <div id="modalOldPriceLine" class="old-price-line hidden"><span>Было:</span> <strong id="modalOldPrice"></strong></div>
         <div class="price-line"><span>Цена:</span> <strong id="modalPrice"></strong></div>
         <div class="stock-line"><span>Остаток:</span> <strong id="modalStock"></strong></div>
-        <button id="orderBtn">Заказать</button>
-    </div>
-</div>
-
-<div id="orderModal" class="modal hidden">
-    <div class="modal-card">
-        <button class="close" id="closeOrderModal">×</button>
-        <h2>Оформление заказа</h2>
-
-        <div id="orderStep1">
+        <div class="modal-cart">
             <label>Количество
-                <input id="orderQuantity" type="number" min="0.001" step="0.001" required/>
+                <input id="modalQuantity" type="number" min="0.001" step="0.001" required/>
             </label>
             <label>Единица измерения
-                <select id="orderUnit">
-                    <option value="PCS">Штуки</option>
-                    <option value="CUBIC_METERS">Кубометры</option>
-                </select>
+                <select id="modalUnit"></select>
             </label>
-            <button id="goStep2">Далее</button>
         </div>
-
-        <div id="orderStep2" class="hidden">
-            <label>ФИО
-                <input id="orderFullName" required/>
-            </label>
-            <label>Телефон
-                <input id="orderPhone" required/>
-            </label>
-            <label>Адрес/комментарий
-                <textarea id="orderAddress" required></textarea>
-            </label>
-            <fieldset class="choice-group">
-                <legend>Доставка</legend>
-                <label class="choice-option">
-                    <input type="radio" name="deliveryMethod" value="CITY_DELIVERY" checked/>
-                    Доставка по городу (+1000 ₽)
-                </label>
-                <label class="choice-option">
-                    <input type="radio" name="deliveryMethod" value="PICKUP"/>
-                    Самовывоз
-                </label>
-                <label class="choice-option">
-                    <input type="radio" name="deliveryMethod" value="OTHER"/>
-                    Другая доставка (обсуждается)
-                </label>
-            </fieldset>
-
-            <fieldset class="choice-group">
-                <legend>Как удобнее оплатить</legend>
-                <label class="choice-option">
-                    <input type="radio" name="paymentMethod" value="CARD_NOW" checked/>
-                    Сейчас (карта)
-                </label>
-                <label class="choice-option">
-                    <input type="radio" name="paymentMethod" value="ON_DELIVERY"/>
-                    При получении
-                </label>
-            </fieldset>
-
-            <div class="order-summary">
-                <div class="summary-row"><span>Товары</span><strong id="orderItemsTotal">-</strong></div>
-                <div class="summary-row"><span>Доставка</span><strong id="orderDeliveryFee">-</strong></div>
-                <div class="summary-row total"><span>Итого</span><strong id="orderTotal">-</strong></div>
-            </div>
-
-            <button id="submitOrder">Оформить заказ</button>
-        </div>
-
-        <div id="orderStep3" class="hidden">
-            <h3>Оплата сейчас</h3>
-            <p class="pay-note">Переведите <strong id="payTotal">-</strong> по реквизитам ниже и нажмите «Готово».</p>
-            <pre id="paymentDetailsText" class="payment-details"></pre>
-            <button id="confirmPaidBtn">Готово</button>
-            <button id="backToStep2Btn" type="button" class="btn-secondary">Назад</button>
-        </div>
-
-        <p id="orderMessage" class="status"></p>
+        <button id="orderBtn">Добавить в корзину</button>
     </div>
 </div>
 

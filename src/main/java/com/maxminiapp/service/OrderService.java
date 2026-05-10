@@ -1,16 +1,21 @@
 package com.maxminiapp.service;
 
 import com.maxminiapp.config.AppProperties;
+import com.maxminiapp.dto.CreateOrderItemRequest;
 import com.maxminiapp.dto.CreateOrderRequest;
 import com.maxminiapp.dto.CreateOrderResponse;
+import com.maxminiapp.dto.OrderItemResponse;
 import com.maxminiapp.dto.OrderResponse;
 import com.maxminiapp.enums.DeliveryMethod;
 import com.maxminiapp.enums.OrderStatus;
 import com.maxminiapp.enums.PaymentMethod;
+import com.maxminiapp.enums.QuantityUnit;
 import com.maxminiapp.exception.BadRequestException;
 import com.maxminiapp.model.AppUser;
 import com.maxminiapp.model.Order;
+import com.maxminiapp.model.OrderItem;
 import com.maxminiapp.model.Product;
+import com.maxminiapp.repository.OrderItemRepository;
 import com.maxminiapp.repository.OrderRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +27,10 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class OrderService {
@@ -35,6 +43,7 @@ public class OrderService {
     private final AppProperties appProperties;
     private final AppSettingsService appSettingsService;
     private final OrderNotificationService orderNotificationService;
+    private final OrderItemRepository orderItemRepository;
 
     public OrderService(
             OrderRepository orderRepository,
@@ -42,7 +51,8 @@ public class OrderService {
             ProductService productService,
             AppProperties appProperties,
             AppSettingsService appSettingsService,
-            OrderNotificationService orderNotificationService
+            OrderNotificationService orderNotificationService,
+            OrderItemRepository orderItemRepository
     ) {
         this.orderRepository = orderRepository;
         this.userService = userService;
@@ -50,6 +60,7 @@ public class OrderService {
         this.appProperties = appProperties;
         this.appSettingsService = appSettingsService;
         this.orderNotificationService = orderNotificationService;
+        this.orderItemRepository = orderItemRepository;
     }
 
     @Transactional
@@ -57,11 +68,6 @@ public class OrderService {
         Long maxUserId = headerUserId != null ? headerUserId : request.getUserId();
         if (maxUserId == null) {
             throw new BadRequestException("Нужен ID пользователя MAX (X-User-Id или userId в запросе)");
-        }
-
-        BigDecimal quantity = request.getQuantity().setScale(3, RoundingMode.HALF_UP);
-        if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException("Количество должно быть больше 0");
         }
 
         String fullName = request.getFullName().trim();
@@ -95,24 +101,22 @@ public class OrderService {
         user.setPhone(phone);
         user.setAddress(address);
 
-        Product product = productService.getByIdOrThrow(request.getProductId());
-        if (!product.isActive()) {
-            throw new BadRequestException("Товар недоступен для заказа");
-        }
-
-        BigDecimal unitPrice = productService.resolveUnitPrice(product, request.getQuantityUnit());
-        BigDecimal itemsTotal = unitPrice.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
+        List<ResolvedOrderItem> resolvedItems = resolveItemsForOrder(request);
+        BigDecimal itemsTotal = resolvedItems.stream()
+                .map(ResolvedOrderItem::lineTotal)
+                .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
         BigDecimal deliveryFee = resolveDeliveryFee(request.getDeliveryMethod());
         BigDecimal total = itemsTotal.add(deliveryFee).setScale(2, RoundingMode.HALF_UP);
 
-        productService.reserveStock(product, request.getQuantityUnit(), quantity);
+        ResolvedOrderItem firstItem = resolvedItems.getFirst();
 
         Order order = new Order();
         order.setUser(user);
-        order.setProduct(product);
-        order.setQuantity(quantity);
-        order.setQuantityUnit(request.getQuantityUnit());
-        order.setUnitPrice(unitPrice);
+        order.setProduct(firstItem.product());
+        order.setQuantity(firstItem.quantity());
+        order.setQuantityUnit(firstItem.quantityUnit());
+        order.setUnitPrice(firstItem.unitPrice());
         order.setItemsTotal(itemsTotal);
         order.setDeliveryFee(deliveryFee);
         order.setTotalPrice(total);
@@ -131,8 +135,20 @@ public class OrderService {
             order.setPaymentDetailsSnapshot(null);
         }
 
+        for (ResolvedOrderItem item : resolvedItems) {
+            OrderItem orderItem = new OrderItem();
+            orderItem.setOrder(order);
+            orderItem.setProduct(item.product());
+            orderItem.setProductName(item.product().getName());
+            orderItem.setQuantity(item.quantity());
+            orderItem.setQuantityUnit(item.quantityUnit());
+            orderItem.setUnitPrice(item.unitPrice());
+            orderItem.setLineTotal(item.lineTotal());
+            order.getItems().add(orderItem);
+        }
+
         order = orderRepository.save(order);
-        scheduleAdminNotificationAfterCommit(order);
+        scheduleAdminNotificationAfterCommit(order.getId());
 
         return new CreateOrderResponse(
                 order.getId(),
@@ -147,6 +163,25 @@ public class OrderService {
         );
     }
 
+    @Transactional
+    public void acceptOrder(Long orderId, String etaRaw) {
+        String eta = etaRaw == null ? "" : etaRaw.trim();
+        if (eta.isBlank()) {
+            throw new BadRequestException("Укажите ориентировочное время доставки");
+        }
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BadRequestException("Заказ не найден"));
+
+        order.setAccepted(true);
+        order.setAcceptedAt(LocalDateTime.now());
+        order.setDeliveryEta(eta);
+        orderRepository.save(order);
+
+        Long userMaxId = order.getUser() == null ? null : order.getUser().getMaxUserId();
+        scheduleCustomerAcceptanceNotificationAfterCommit(userMaxId, eta);
+    }
+
     @Transactional(readOnly = true)
     public List<OrderResponse> getAllOrders() {
         return orderRepository.findAllByOrderByCreatedAtDesc().stream()
@@ -155,11 +190,13 @@ public class OrderService {
     }
 
     private OrderResponse toResponse(Order order) {
+        Long productId = order.getProduct() == null ? null : order.getProduct().getId();
+        String productName = order.getProduct() == null ? "Сборный заказ" : order.getProduct().getName();
         return new OrderResponse(
                 order.getId(),
                 order.getUser().getMaxUserId(),
-                order.getProduct().getId(),
-                order.getProduct().getName(),
+                productId,
+                productName,
                 order.getQuantity(),
                 order.getQuantityUnit(),
                 order.getUnitPrice(),
@@ -173,9 +210,44 @@ public class OrderService {
                 order.getAddress(),
                 order.getStatus(),
                 order.getPaymentDetailsSnapshot(),
+                order.isAccepted(),
+                order.getDeliveryEta(),
+                order.getAcceptedAt(),
+                resolveOrderItems(order),
                 order.getCreatedAt(),
                 order.getPaidAt()
         );
+    }
+
+    private List<OrderItemResponse> resolveOrderItems(Order order) {
+        List<OrderItem> rawItems = orderItemRepository.findByOrderIdOrderByIdAsc(order.getId());
+        if (!rawItems.isEmpty()) {
+            return rawItems.stream()
+                    .map(item -> new OrderItemResponse(
+                            item.getId(),
+                            item.getProduct() == null ? null : item.getProduct().getId(),
+                            item.getProductName(),
+                            item.getQuantity(),
+                            item.getQuantityUnit(),
+                            item.getUnitPrice(),
+                            item.getLineTotal()
+                    ))
+                    .toList();
+        }
+
+        if (order.getProduct() == null) {
+            return List.of();
+        }
+
+        return List.of(new OrderItemResponse(
+                null,
+                order.getProduct().getId(),
+                order.getProduct().getName(),
+                order.getQuantity(),
+                order.getQuantityUnit(),
+                order.getUnitPrice(),
+                order.getQuantity().multiply(order.getUnitPrice()).setScale(2, RoundingMode.HALF_UP)
+        ));
     }
 
     private BigDecimal resolveDeliveryFee(DeliveryMethod deliveryMethod) {
@@ -189,16 +261,16 @@ public class OrderService {
         return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private void scheduleAdminNotificationAfterCommit(Order order) {
-        if (order == null) {
+    private void scheduleAdminNotificationAfterCommit(Long orderId) {
+        if (orderId == null) {
             return;
         }
 
         Runnable notifyTask = () -> {
             try {
-                orderNotificationService.notifyAdminsAboutNewOrder(order);
+                orderNotificationService.notifyAdminsAboutNewOrder(orderId);
             } catch (Exception ex) {
-                log.warn("Failed to notify admins about order {}: {}", order.getId(), ex.getMessage());
+                log.warn("Failed to notify admins about order {}: {}", orderId, ex.getMessage());
             }
         };
 
@@ -213,5 +285,129 @@ public class OrderService {
         }
 
         notifyTask.run();
+    }
+
+    private void scheduleCustomerAcceptanceNotificationAfterCommit(Long userMaxId, String eta) {
+        if (userMaxId == null) {
+            return;
+        }
+
+        Runnable notifyTask = () -> {
+            try {
+                orderNotificationService.notifyCustomerOrderAccepted(userMaxId, eta);
+            } catch (Exception ex) {
+                log.warn("Failed to notify customer {} about accepted order: {}", userMaxId, ex.getMessage());
+            }
+        };
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notifyTask.run();
+                }
+            });
+            return;
+        }
+
+        notifyTask.run();
+    }
+
+    private List<ResolvedOrderItem> resolveItemsForOrder(CreateOrderRequest request) {
+        List<CreateOrderItemRequest> requestItems = request.getItems();
+        if (requestItems == null || requestItems.isEmpty()) {
+            if (request.getProductId() == null || request.getQuantity() == null || request.getQuantityUnit() == null) {
+                throw new BadRequestException("Корзина пуста");
+            }
+
+            CreateOrderItemRequest single = new CreateOrderItemRequest();
+            single.setProductId(request.getProductId());
+            single.setQuantity(request.getQuantity());
+            single.setQuantityUnit(request.getQuantityUnit());
+            requestItems = List.of(single);
+        }
+
+        Map<String, MergedOrderItem> merged = new LinkedHashMap<>();
+        for (CreateOrderItemRequest item : requestItems) {
+            if (item == null || item.getProductId() == null || item.getQuantity() == null || item.getQuantityUnit() == null) {
+                throw new BadRequestException("Проверьте товары в корзине");
+            }
+
+            BigDecimal qty = item.getQuantity().setScale(3, RoundingMode.HALF_UP);
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BadRequestException("Количество товара должно быть больше 0");
+            }
+
+            String key = item.getProductId() + ":" + item.getQuantityUnit().name();
+            MergedOrderItem existing = merged.get(key);
+            if (existing == null) {
+                merged.put(key, new MergedOrderItem(item.getProductId(), item.getQuantityUnit(), qty));
+            } else {
+                existing.addQuantity(qty);
+            }
+        }
+
+        List<ResolvedOrderItem> resolved = new ArrayList<>();
+        for (MergedOrderItem mergedItem : merged.values()) {
+            Product product = productService.getByIdOrThrow(mergedItem.productId());
+            if (!product.isActive()) {
+                throw new BadRequestException("Товар «" + product.getName() + "» недоступен для заказа");
+            }
+
+            BigDecimal unitPrice = productService.resolveUnitPrice(product, mergedItem.unit());
+            productService.reserveStock(product, mergedItem.unit(), mergedItem.quantity());
+            BigDecimal lineTotal = unitPrice.multiply(mergedItem.quantity()).setScale(2, RoundingMode.HALF_UP);
+
+            resolved.add(new ResolvedOrderItem(
+                    product,
+                    mergedItem.quantity(),
+                    mergedItem.unit(),
+                    unitPrice,
+                    lineTotal
+            ));
+        }
+
+        if (resolved.isEmpty()) {
+            throw new BadRequestException("Корзина пуста");
+        }
+
+        return resolved;
+    }
+
+    private record ResolvedOrderItem(
+            Product product,
+            BigDecimal quantity,
+            QuantityUnit quantityUnit,
+            BigDecimal unitPrice,
+            BigDecimal lineTotal
+    ) {
+    }
+
+    private static final class MergedOrderItem {
+        private final Long productId;
+        private final QuantityUnit unit;
+        private BigDecimal quantity;
+
+        private MergedOrderItem(Long productId, QuantityUnit unit, BigDecimal quantity) {
+            this.productId = productId;
+            this.unit = unit;
+            this.quantity = quantity;
+        }
+
+        public Long productId() {
+            return productId;
+        }
+
+        public QuantityUnit unit() {
+            return unit;
+        }
+
+        public BigDecimal quantity() {
+            return quantity;
+        }
+
+        public void addQuantity(BigDecimal delta) {
+            this.quantity = this.quantity.add(delta).setScale(3, RoundingMode.HALF_UP);
+        }
     }
 }

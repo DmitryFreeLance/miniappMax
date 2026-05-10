@@ -63,6 +63,17 @@ public class AdminController {
         return orderService.getAllOrders();
     }
 
+    @PostMapping("/orders/{id}/accept")
+    public ActionResponse acceptOrder(
+            @RequestHeader(name = "X-User-Id", required = false) Long adminUserId,
+            @PathVariable Long id,
+            @RequestBody @Valid AdminAcceptOrderRequest request
+    ) {
+        requireAdmin(adminUserId);
+        orderService.acceptOrder(id, request.getEta());
+        return new ActionResponse("Заказ принят, клиент уведомлен.");
+    }
+
     @GetMapping("/products")
     public List<ProductResponse> products(@RequestHeader(name = "X-User-Id", required = false) Long adminUserId) {
         requireAdmin(adminUserId);

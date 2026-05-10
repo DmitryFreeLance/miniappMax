@@ -3,24 +3,21 @@ package com.maxminiapp.dto;
 import com.maxminiapp.enums.DeliveryMethod;
 import com.maxminiapp.enums.PaymentMethod;
 import com.maxminiapp.enums.QuantityUnit;
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.Valid;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public class CreateOrderRequest {
 
     private Long userId;
 
-    @NotNull
     private Long productId;
 
-    @NotNull
-    @DecimalMin("0.001")
     private BigDecimal quantity;
 
-    @NotNull
     private QuantityUnit quantityUnit;
 
     @NotBlank
@@ -36,6 +33,9 @@ public class CreateOrderRequest {
 
     @NotNull
     private DeliveryMethod deliveryMethod;
+
+    @Valid
+    private List<CreateOrderItemRequest> items;
 
     public Long getUserId() {
         return userId;
@@ -107,5 +107,13 @@ public class CreateOrderRequest {
 
     public void setDeliveryMethod(DeliveryMethod deliveryMethod) {
         this.deliveryMethod = deliveryMethod;
+    }
+
+    public List<CreateOrderItemRequest> getItems() {
+        return items;
+    }
+
+    public void setItems(List<CreateOrderItemRequest> items) {
+        this.items = items;
     }
 }

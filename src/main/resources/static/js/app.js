@@ -3,20 +3,25 @@ const state = {
     authenticated: false,
     isAdmin: false,
     userFullName: null,
+
     products: [],
     fixPriceProducts: [],
+    catalogLoaded: false,
+    fixPriceLoaded: false,
     catalogQuery: "",
     fixPriceQuery: "",
     catalogOnlyAvailable: false,
     fixOnlyAvailable: false,
+
     selectedProduct: null,
-    orderQuantity: null,
-    orderUnit: "PCS",
-    orderDeliveryMethod: "CITY_DELIVERY",
-    orderPaymentMethod: "CARD_NOW",
-    orderItemsTotal: null,
-    orderDeliveryFee: null,
-    orderTotal: null,
+
+    cartItems: [],
+    cartDeliveryMethod: "CITY_DELIVERY",
+    cartPaymentMethod: "CARD_NOW",
+    cartItemsTotal: 0,
+    cartDeliveryFee: 0,
+    cartTotal: 0,
+
     cityDeliveryFee: 1000
 };
 
@@ -38,6 +43,25 @@ const el = {
     fixSearchInput: document.getElementById("fixSearchInput"),
     fixSearchClear: document.getElementById("fixSearchClear"),
     fixFilterBtn: document.getElementById("fixFilterBtn"),
+
+    cartTabBadge: document.getElementById("cartTabBadge"),
+    cartItems: document.getElementById("cartItems"),
+    cartEmpty: document.getElementById("cartEmpty"),
+    cartCheckoutPanel: document.getElementById("cartCheckoutPanel"),
+    cartFullName: document.getElementById("cartFullName"),
+    cartPhone: document.getElementById("cartPhone"),
+    cartAddress: document.getElementById("cartAddress"),
+    cartItemsTotal: document.getElementById("cartItemsTotal"),
+    cartDeliveryFee: document.getElementById("cartDeliveryFee"),
+    cartTotal: document.getElementById("cartTotal"),
+    cartCheckoutBtn: document.getElementById("cartCheckoutBtn"),
+    cartPaymentStep: document.getElementById("cartPaymentStep"),
+    cartPayTotal: document.getElementById("cartPayTotal"),
+    cartPaymentDetailsText: document.getElementById("cartPaymentDetailsText"),
+    cartConfirmPaidBtn: document.getElementById("cartConfirmPaidBtn"),
+    cartBackFromPaymentBtn: document.getElementById("cartBackFromPaymentBtn"),
+    cartMessage: document.getElementById("cartMessage"),
+
     infoPosts: document.getElementById("infoPosts"),
 
     adminCatalogProducts: document.getElementById("adminCatalogProducts"),
@@ -55,28 +79,9 @@ const el = {
     modalOldPrice: document.getElementById("modalOldPrice"),
     modalPrice: document.getElementById("modalPrice"),
     modalStock: document.getElementById("modalStock"),
-
+    modalQuantity: document.getElementById("modalQuantity"),
+    modalUnit: document.getElementById("modalUnit"),
     orderBtn: document.getElementById("orderBtn"),
-    orderModal: document.getElementById("orderModal"),
-    closeOrderModal: document.getElementById("closeOrderModal"),
-    orderStep1: document.getElementById("orderStep1"),
-    orderStep2: document.getElementById("orderStep2"),
-    orderStep3: document.getElementById("orderStep3"),
-    orderQuantity: document.getElementById("orderQuantity"),
-    orderUnit: document.getElementById("orderUnit"),
-    goStep2: document.getElementById("goStep2"),
-    orderFullName: document.getElementById("orderFullName"),
-    orderPhone: document.getElementById("orderPhone"),
-    orderAddress: document.getElementById("orderAddress"),
-    orderItemsTotal: document.getElementById("orderItemsTotal"),
-    orderDeliveryFee: document.getElementById("orderDeliveryFee"),
-    orderTotal: document.getElementById("orderTotal"),
-    payTotal: document.getElementById("payTotal"),
-    paymentDetailsText: document.getElementById("paymentDetailsText"),
-    confirmPaidBtn: document.getElementById("confirmPaidBtn"),
-    backToStep2Btn: document.getElementById("backToStep2Btn"),
-    submitOrder: document.getElementById("submitOrder"),
-    orderMessage: document.getElementById("orderMessage"),
 
     productForm: document.getElementById("productForm"),
     sectionType: document.getElementById("sectionType"),
@@ -108,6 +113,14 @@ function money(value) {
     return `${Number(value).toLocaleString("ru-RU", {minimumFractionDigits: 2, maximumFractionDigits: 2})} ₽`;
 }
 
+function formatQuantity(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return "0";
+    }
+    return numeric.toLocaleString("ru-RU", {minimumFractionDigits: 0, maximumFractionDigits: 3});
+}
+
 function unitLabel(unit) {
     return unit === "PCS" ? "шт" : "куб.м";
 }
@@ -123,6 +136,9 @@ function unitModeLabel(unitMode) {
 }
 
 function getUnitPriceValue(product, unit) {
+    if (!product) {
+        return null;
+    }
     if (unit === "PCS") {
         return product.pricePcs ?? product.price ?? null;
     }
@@ -200,6 +216,13 @@ function readRadioValue(name) {
     return node ? node.value : null;
 }
 
+function setRadioValue(name, value) {
+    const target = document.querySelector(`input[name="${name}"][value="${value}"]`);
+    if (target) {
+        target.checked = true;
+    }
+}
+
 function formatAddressForDelivery(method, rawAddress) {
     const trimmed = (rawAddress || "").trim();
     if (method === "PICKUP") {
@@ -209,14 +232,6 @@ function formatAddressForDelivery(method, rawAddress) {
         return trimmed || "Другая доставка (обсуждается)";
     }
     return trimmed;
-}
-
-function calculateOrderTotals(product, quantity, unit, deliveryMethod) {
-    const unitPrice = Number(getUnitPriceValue(product, unit));
-    const deliveryFee = Number(deliveryFeeByMethod(deliveryMethod));
-    const itemsTotal = Number((unitPrice * quantity).toFixed(2));
-    const total = Number((itemsTotal + deliveryFee).toFixed(2));
-    return {itemsTotal, deliveryFee, total};
 }
 
 function orderStatusLabel(status) {
@@ -246,6 +261,9 @@ function orderStatusClass(status) {
 }
 
 function orderDisplayStatus(order) {
+    if (order?.accepted) {
+        return "Заказ принят";
+    }
     if (order?.paymentMethod === "ON_DELIVERY") {
         return "Оплата при получении";
     }
@@ -256,6 +274,9 @@ function orderDisplayStatus(order) {
 }
 
 function orderDisplayStatusClass(order) {
+    if (order?.accepted) {
+        return "paid";
+    }
     if (order?.paymentMethod === "CARD_NOW") {
         return "paid";
     }
@@ -456,6 +477,10 @@ function switchTab(tabId) {
     if (tabId === "admin-orders" && state.isAdmin) {
         loadAdminOrders();
     }
+
+    if (tabId === "cart") {
+        renderCart();
+    }
 }
 
 function isTabActive(tabId) {
@@ -590,7 +615,7 @@ function renderProducts(items, targetGrid, targetEmpty, mode) {
                     <div class="price">${displayPrice == null ? "-" : money(displayPrice)}</div>
                     ${discountHtml}
                 </div>
-                <button class="card-cta" type="button">Заказать</button>
+                <button class="card-cta" type="button">В корзину</button>
             </div>
         `;
 
@@ -608,12 +633,16 @@ function renderProducts(items, targetGrid, targetEmpty, mode) {
 async function loadCatalog() {
     const items = await api("/api/catalog");
     state.products = items;
+    state.catalogLoaded = true;
+    syncCartWithCatalogData();
     renderProducts(items, el.catalogGrid, el.catalogEmpty, "catalog");
 }
 
 async function loadFixPrice() {
     const items = await api("/api/fix-price");
     state.fixPriceProducts = items;
+    state.fixPriceLoaded = true;
+    syncCartWithCatalogData();
     renderProducts(items, el.fixPriceGrid, el.fixPriceEmpty, "fix-price");
 }
 
@@ -656,6 +685,38 @@ async function loadCheckoutConfig() {
     } catch {
         state.cityDeliveryFee = 1000;
     }
+    updateCartSummary();
+}
+
+function closeProduct() {
+    el.productModal.classList.add("hidden");
+}
+
+function availableStockForUnit(product, unit) {
+    if (!product) {
+        return 0;
+    }
+    if (unit === "PCS") {
+        return Number(product.stockPcs || 0);
+    }
+    return Number(product.stockCubicMeters || 0);
+}
+
+function defaultQtyForUnit(unit) {
+    return unit === "PCS" ? 1 : 0.001;
+}
+
+function configureModalUnitSelect(product) {
+    const allowed = getAllowedUnits(product);
+    el.modalUnit.innerHTML = allowed
+        .map((unit) => `<option value="${unit}">${unitLabel(unit)}</option>`)
+        .join("");
+
+    el.modalUnit.value = allowed[0];
+    el.modalUnit.disabled = allowed.length === 1;
+
+    const defaultQty = defaultQtyForUnit(allowed[0]);
+    el.modalQuantity.value = defaultQty;
 }
 
 function openProduct(product) {
@@ -674,75 +735,350 @@ function openProduct(product) {
         el.modalOldPrice.textContent = "";
     }
 
+    configureModalUnitSelect(product);
     el.productModal.classList.remove("hidden");
 }
 
-function closeProduct() {
-    el.productModal.classList.add("hidden");
+function getAllProductsMap() {
+    const map = new Map();
+    [...state.products, ...state.fixPriceProducts].forEach((item) => {
+        map.set(item.id, item);
+    });
+    return map;
 }
 
-function configureOrderUnitSelect(product) {
-    const allowed = getAllowedUnits(product);
-    el.orderUnit.innerHTML = allowed
-        .map((unit) => `<option value="${unit}">${unitLabel(unit)}</option>`)
-        .join("");
-
-    el.orderUnit.value = allowed[0];
-    el.orderUnit.disabled = allowed.length === 1;
+function cartStorageKey() {
+    return `miniapp-max-cart-${state.userId || "guest"}`;
 }
 
-function setRadioValue(name, value) {
-    const target = document.querySelector(`input[name="${name}"][value="${value}"]`);
-    if (target) {
-        target.checked = true;
+function saveCartToStorage() {
+    try {
+        localStorage.setItem(cartStorageKey(), JSON.stringify(state.cartItems));
+    } catch {
     }
 }
 
-function syncOrderAddressByDeliveryMethod() {
-    const deliveryMethod = readRadioValue("deliveryMethod") || "CITY_DELIVERY";
+function loadCartFromStorage() {
+    try {
+        const raw = localStorage.getItem(cartStorageKey());
+        if (!raw) {
+            state.cartItems = [];
+            return;
+        }
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+            state.cartItems = [];
+            return;
+        }
+        state.cartItems = parsed.map((item) => ({
+            key: String(item.key || `${item.productId}:${item.quantityUnit}`),
+            productId: Number(item.productId),
+            quantity: Number(item.quantity),
+            quantityUnit: item.quantityUnit,
+            productName: String(item.productName || "Товар"),
+            imageUrl: String(item.imageUrl || ""),
+            unitPrice: Number(item.unitPrice)
+        })).filter((item) => Number.isFinite(item.productId)
+            && Number.isFinite(item.quantity)
+            && item.quantity > 0
+            && Number.isFinite(item.unitPrice)
+            && (item.quantityUnit === "PCS" || item.quantityUnit === "CUBIC_METERS"));
+    } catch {
+        state.cartItems = [];
+    }
+}
+
+function bumpCartBadge() {
+    el.cartTabBadge.classList.remove("bump");
+    void el.cartTabBadge.offsetWidth;
+    el.cartTabBadge.classList.add("bump");
+}
+
+function updateCartBadge(withBump = false) {
+    const count = state.cartItems.length;
+    if (count <= 0) {
+        el.cartTabBadge.classList.add("hidden");
+        el.cartTabBadge.textContent = "0";
+        return;
+    }
+    el.cartTabBadge.classList.remove("hidden");
+    el.cartTabBadge.textContent = String(count);
+    if (withBump) {
+        bumpCartBadge();
+    }
+}
+
+function getCartReservedQuantity(productId, unit, skipKey) {
+    return state.cartItems.reduce((sum, item) => {
+        if (item.productId !== productId || item.quantityUnit !== unit) {
+            return sum;
+        }
+        if (skipKey && item.key === skipKey) {
+            return sum;
+        }
+        return sum + Number(item.quantity || 0);
+    }, 0);
+}
+
+function syncCartWithCatalogData() {
+    const productsMap = getAllProductsMap();
+    const nextItems = [];
+
+    state.cartItems.forEach((item) => {
+        const product = productsMap.get(item.productId);
+        if (!product) {
+            if (!(state.catalogLoaded && state.fixPriceLoaded)) {
+                nextItems.push(item);
+            }
+            return;
+        }
+        if (!product.active) {
+            return;
+        }
+
+        const allowedUnits = getAllowedUnits(product);
+        if (!allowedUnits.includes(item.quantityUnit)) {
+            return;
+        }
+
+        const unitPrice = Number(getUnitPriceValue(product, item.quantityUnit));
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+            return;
+        }
+
+        const maxStock = availableStockForUnit(product, item.quantityUnit);
+        let qty = Number(item.quantity || 0);
+        if (!Number.isFinite(qty) || qty <= 0) {
+            return;
+        }
+        if (qty > maxStock) {
+            qty = maxStock;
+        }
+        if (qty <= 0) {
+            return;
+        }
+
+        nextItems.push({
+            key: `${product.id}:${item.quantityUnit}`,
+            productId: product.id,
+            quantityUnit: item.quantityUnit,
+            quantity: Number(qty.toFixed(3)),
+            unitPrice: unitPrice,
+            productName: product.name,
+            imageUrl: product.imageUrl
+        });
+    });
+
+    state.cartItems = nextItems;
+    saveCartToStorage();
+    updateCartBadge();
+    renderCart();
+}
+
+function addSelectedProductToCart() {
+    if (!state.authenticated || !state.userId) {
+        notify("Откройте mini app через MAX.");
+        return;
+    }
+
+    const product = state.selectedProduct;
+    if (!product) {
+        return;
+    }
+
+    const quantity = Number(el.modalQuantity.value);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+        notify("Введите корректное количество");
+        return;
+    }
+
+    const quantityUnit = el.modalUnit.value;
+    const unitPrice = Number(getUnitPriceValue(product, quantityUnit));
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        notify("Для выбранной единицы цена не настроена");
+        return;
+    }
+
+    const key = `${product.id}:${quantityUnit}`;
+    const existing = state.cartItems.find((item) => item.key === key);
+    const alreadyReserved = getCartReservedQuantity(product.id, quantityUnit, key);
+    const requestedTotal = alreadyReserved + quantity + Number(existing?.quantity || 0);
+    const inStock = availableStockForUnit(product, quantityUnit);
+    if (requestedTotal > inStock) {
+        notify(`Недостаточно остатка. Доступно: ${formatQuantity(inStock)} ${unitLabel(quantityUnit)}`);
+        return;
+    }
+
+    if (existing) {
+        existing.quantity = Number((existing.quantity + quantity).toFixed(3));
+        existing.unitPrice = unitPrice;
+        existing.productName = product.name;
+        existing.imageUrl = product.imageUrl;
+    } else {
+        state.cartItems.push({
+            key,
+            productId: product.id,
+            quantity: Number(quantity.toFixed(3)),
+            quantityUnit,
+            unitPrice,
+            productName: product.name,
+            imageUrl: product.imageUrl
+        });
+    }
+
+    saveCartToStorage();
+    updateCartBadge(true);
+    renderCart();
+    closeProduct();
+    notify("Товар добавлен в корзину");
+}
+
+function calculateCartItemsTotal() {
+    return state.cartItems.reduce((sum, item) => {
+        const line = Number(item.quantity || 0) * Number(item.unitPrice || 0);
+        return sum + Number(line.toFixed(2));
+    }, 0);
+}
+
+function syncCartAddressByDeliveryMethod() {
+    const deliveryMethod = readRadioValue("cartDeliveryMethod") || "CITY_DELIVERY";
     if (deliveryMethod === "CITY_DELIVERY") {
-        el.orderAddress.required = true;
-        el.orderAddress.placeholder = "Укажите адрес доставки";
+        el.cartAddress.required = true;
+        el.cartAddress.placeholder = "Укажите адрес доставки";
         return;
     }
     if (deliveryMethod === "PICKUP") {
-        el.orderAddress.required = false;
-        el.orderAddress.placeholder = "Можно оставить пустым";
+        el.cartAddress.required = false;
+        el.cartAddress.placeholder = "Можно оставить пустым";
         return;
     }
-    el.orderAddress.required = false;
-    el.orderAddress.placeholder = "Комментарий по доставке (опционально)";
+    el.cartAddress.required = false;
+    el.cartAddress.placeholder = "Комментарий по доставке (опционально)";
 }
 
-function updateOrderSummary() {
-    if (!state.selectedProduct || !state.orderQuantity) {
-        el.orderItemsTotal.textContent = "-";
-        el.orderDeliveryFee.textContent = "-";
-        el.orderTotal.textContent = "-";
+function updateCartSummary() {
+    const itemsTotal = calculateCartItemsTotal();
+    const deliveryMethod = readRadioValue("cartDeliveryMethod") || state.cartDeliveryMethod || "CITY_DELIVERY";
+    const paymentMethod = readRadioValue("cartPaymentMethod") || state.cartPaymentMethod || "CARD_NOW";
+    const deliveryFee = deliveryFeeByMethod(deliveryMethod);
+    const total = Number((itemsTotal + deliveryFee).toFixed(2));
+
+    state.cartDeliveryMethod = deliveryMethod;
+    state.cartPaymentMethod = paymentMethod;
+    state.cartItemsTotal = Number(itemsTotal.toFixed(2));
+    state.cartDeliveryFee = Number(deliveryFee.toFixed(2));
+    state.cartTotal = total;
+
+    el.cartItemsTotal.textContent = money(state.cartItemsTotal);
+    el.cartDeliveryFee.textContent = deliveryFee > 0 ? money(deliveryFee) : "0 ₽";
+    el.cartTotal.textContent = money(state.cartTotal);
+    el.cartPayTotal.textContent = money(state.cartTotal);
+}
+
+function renderCart() {
+    el.cartMessage.textContent = "";
+    el.cartPaymentStep.classList.add("hidden");
+    el.cartItems.innerHTML = "";
+
+    if (!state.cartItems.length) {
+        el.cartEmpty.classList.remove("hidden");
+        el.cartCheckoutPanel.classList.add("hidden");
+        updateCartBadge();
+        updateCartSummary();
         return;
     }
 
-    const deliveryMethod = readRadioValue("deliveryMethod") || "CITY_DELIVERY";
-    const paymentMethod = readRadioValue("paymentMethod") || "CARD_NOW";
-    const totals = calculateOrderTotals(state.selectedProduct, state.orderQuantity, state.orderUnit, deliveryMethod);
+    el.cartEmpty.classList.add("hidden");
+    el.cartCheckoutPanel.classList.remove("hidden");
 
-    state.orderDeliveryMethod = deliveryMethod;
-    state.orderPaymentMethod = paymentMethod;
-    state.orderItemsTotal = totals.itemsTotal;
-    state.orderDeliveryFee = totals.deliveryFee;
-    state.orderTotal = totals.total;
+    const markup = state.cartItems.map((item) => {
+        const lineTotal = Number((Number(item.quantity) * Number(item.unitPrice)).toFixed(2));
+        return `
+            <article class="cart-item">
+                <div class="cart-item-media">
+                    <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.productName)}"/>
+                </div>
+                <div>
+                    <p class="cart-item-title">${escapeHtml(item.productName)}</p>
+                    <p class="cart-item-sub">${escapeHtml(formatQuantity(item.quantity))} ${escapeHtml(unitLabel(item.quantityUnit))} × ${escapeHtml(money(item.unitPrice))}</p>
+                    <p class="cart-item-total">${escapeHtml(money(lineTotal))}</p>
+                </div>
+                <div class="cart-item-actions">
+                    <input type="number" class="js-cart-qty" data-key="${escapeHtml(item.key)}" min="0.001" step="0.001" value="${escapeHtml(item.quantity)}"/>
+                    <button class="btn-inline js-cart-update" data-key="${escapeHtml(item.key)}" type="button">Обновить</button>
+                    <button class="btn-inline cart-item-remove js-cart-remove" data-key="${escapeHtml(item.key)}" type="button">Удалить</button>
+                </div>
+            </article>
+        `;
+    }).join("");
 
-    el.orderItemsTotal.textContent = money(totals.itemsTotal);
-    el.orderDeliveryFee.textContent = totals.deliveryFee > 0 ? money(totals.deliveryFee) : "0 ₽";
-    el.orderTotal.textContent = money(totals.total);
-    el.payTotal.textContent = money(totals.total);
+    el.cartItems.innerHTML = markup;
+
+    el.cartItems.querySelectorAll(".js-cart-remove").forEach((button) => {
+        button.addEventListener("click", () => {
+            const key = button.dataset.key;
+            state.cartItems = state.cartItems.filter((item) => item.key !== key);
+            saveCartToStorage();
+            updateCartBadge();
+            renderCart();
+        });
+    });
+
+    el.cartItems.querySelectorAll(".js-cart-update").forEach((button) => {
+        button.addEventListener("click", () => {
+            const key = button.dataset.key;
+            const node = Array.from(el.cartItems.querySelectorAll(".js-cart-qty"))
+                .find((itemNode) => itemNode.dataset.key === key);
+            if (!node) {
+                return;
+            }
+
+            const qty = Number(node.value);
+            if (!Number.isFinite(qty) || qty <= 0) {
+                notify("Введите корректное количество");
+                return;
+            }
+
+            const cartItem = state.cartItems.find((item) => item.key === key);
+            if (!cartItem) {
+                return;
+            }
+
+            const productsMap = getAllProductsMap();
+            const product = productsMap.get(cartItem.productId);
+            if (!product) {
+                notify("Товар больше недоступен");
+                state.cartItems = state.cartItems.filter((item) => item.key !== key);
+                saveCartToStorage();
+                renderCart();
+                return;
+            }
+
+            const available = availableStockForUnit(product, cartItem.quantityUnit);
+            const otherReserved = getCartReservedQuantity(cartItem.productId, cartItem.quantityUnit, key);
+            if (qty + otherReserved > available) {
+                notify(`Недостаточно остатка. Доступно: ${formatQuantity(Math.max(0, available - otherReserved))} ${unitLabel(cartItem.quantityUnit)}`);
+                return;
+            }
+
+            cartItem.quantity = Number(qty.toFixed(3));
+            cartItem.unitPrice = Number(getUnitPriceValue(product, cartItem.quantityUnit));
+            cartItem.productName = product.name;
+            cartItem.imageUrl = product.imageUrl;
+            saveCartToStorage();
+            renderCart();
+        });
+    });
+
+    updateCartBadge();
+    updateCartSummary();
 }
 
-function collectOrderCustomerData() {
-    const fullName = el.orderFullName.value.trim();
-    const phone = el.orderPhone.value.trim();
-    const deliveryMethod = state.orderDeliveryMethod || readRadioValue("deliveryMethod") || "CITY_DELIVERY";
-    const address = formatAddressForDelivery(deliveryMethod, el.orderAddress.value);
+function collectCartCustomerData() {
+    const fullName = el.cartFullName.value.trim();
+    const phone = el.cartPhone.value.trim();
+    const deliveryMethod = state.cartDeliveryMethod || readRadioValue("cartDeliveryMethod") || "CITY_DELIVERY";
+    const address = formatAddressForDelivery(deliveryMethod, el.cartAddress.value);
 
     if (!fullName || !phone) {
         throw new Error("Заполните ФИО и телефон");
@@ -755,167 +1091,144 @@ function collectOrderCustomerData() {
     return {fullName, phone, deliveryMethod, address};
 }
 
-async function submitOrderRequest(paymentMethodOverride) {
+async function submitCartOrder(paymentMethodOverride) {
     if (!state.authenticated || !state.userId) {
         notify("Откройте mini app через MAX.");
         return;
     }
 
+    if (!state.cartItems.length) {
+        el.cartMessage.textContent = "Корзина пуста";
+        return;
+    }
+
     try {
-        const customerData = collectOrderCustomerData();
-        const deliveryMethod = customerData.deliveryMethod;
-        const paymentMethod = paymentMethodOverride || state.orderPaymentMethod || readRadioValue("paymentMethod") || "CARD_NOW";
+        const customerData = collectCartCustomerData();
+        const paymentMethod = paymentMethodOverride || state.cartPaymentMethod || readRadioValue("cartPaymentMethod") || "CARD_NOW";
+
         const response = await api("/api/orders", {
             method: "POST",
             body: JSON.stringify({
-                productId: state.selectedProduct.id,
-                quantity: state.orderQuantity,
-                quantityUnit: state.orderUnit,
+                items: state.cartItems.map((item) => ({
+                    productId: item.productId,
+                    quantity: item.quantity,
+                    quantityUnit: item.quantityUnit
+                })),
                 fullName: customerData.fullName,
                 phone: customerData.phone,
                 address: customerData.address,
-                deliveryMethod,
+                deliveryMethod: customerData.deliveryMethod,
                 paymentMethod
             })
         });
 
-        el.orderStep1.classList.add("hidden");
-        el.orderStep2.classList.add("hidden");
-        el.orderStep3.classList.add("hidden");
-        el.orderMessage.textContent = response.message || "Заказ создан. С вами свяжется менеджер.";
+        state.cartItems = [];
+        saveCartToStorage();
+        updateCartBadge();
+        el.cartPaymentStep.classList.add("hidden");
+        renderCart();
+        el.cartMessage.textContent = response.message || "Заказ создан. С вами свяжется менеджер.";
+
         await Promise.all([loadCatalog(), loadFixPrice()]);
         if (state.isAdmin) {
             await loadAdminOrders();
         }
     } catch (error) {
-        el.orderMessage.textContent = error.message;
+        el.cartMessage.textContent = error.message;
     }
 }
 
-function openOrder() {
-    if (!state.authenticated || !state.userId) {
-        notify("Оформление заказа доступно только при открытии mini app из MAX.");
-        return;
-    }
-
-    if (!state.selectedProduct) {
-        return;
-    }
-
-    configureOrderUnitSelect(state.selectedProduct);
-    el.orderModal.classList.remove("hidden");
-    el.orderStep1.classList.remove("hidden");
-    el.orderStep2.classList.add("hidden");
-    el.orderStep3.classList.add("hidden");
-    el.orderMessage.textContent = "";
-    el.orderQuantity.value = "";
-    setRadioValue("deliveryMethod", "CITY_DELIVERY");
-    setRadioValue("paymentMethod", "CARD_NOW");
-    syncOrderAddressByDeliveryMethod();
-    updateOrderSummary();
-}
-
-function closeOrder() {
-    el.orderModal.classList.add("hidden");
-}
-
-function initOrderFlow() {
-    el.orderBtn.addEventListener("click", () => {
-        closeProduct();
-        openOrder();
-    });
-
-    el.goStep2.addEventListener("click", () => {
-        const qty = Number(el.orderQuantity.value);
-        if (!Number.isFinite(qty) || qty <= 0) {
-            notify("Введите корректное количество");
-            return;
+async function prepareCardPaymentStep() {
+    try {
+        const paymentDetailsResponse = await api("/api/orders/payment-details");
+        const fee = Number(paymentDetailsResponse.cityDeliveryFee);
+        if (Number.isFinite(fee) && fee >= 0) {
+            state.cityDeliveryFee = fee;
+            updateCartSummary();
         }
 
-        state.orderQuantity = qty;
-        state.orderUnit = el.orderUnit.value;
-        el.orderStep1.classList.add("hidden");
-        el.orderStep2.classList.remove("hidden");
-        el.orderStep3.classList.add("hidden");
-        syncOrderAddressByDeliveryMethod();
-        updateOrderSummary();
-    });
+        const details = (paymentDetailsResponse.paymentDetails || "").trim();
+        if (!details) {
+            throw new Error("Админ еще не заполнил данные для оплаты");
+        }
 
-    el.orderUnit.addEventListener("change", () => {
-        state.orderUnit = el.orderUnit.value;
-        updateOrderSummary();
-    });
+        el.cartPaymentDetailsText.textContent = details;
+        el.cartPaymentStep.classList.remove("hidden");
+        el.cartMessage.textContent = "";
+    } catch (error) {
+        el.cartMessage.textContent = error.message;
+    }
+}
 
-    document.querySelectorAll('input[name="deliveryMethod"]').forEach((input) => {
+function initCartFlow() {
+    document.querySelectorAll('input[name="cartDeliveryMethod"]').forEach((input) => {
         input.addEventListener("change", () => {
-            syncOrderAddressByDeliveryMethod();
-            updateOrderSummary();
+            syncCartAddressByDeliveryMethod();
+            updateCartSummary();
         });
     });
 
-    document.querySelectorAll('input[name="paymentMethod"]').forEach((input) => {
-        input.addEventListener("change", updateOrderSummary);
+    document.querySelectorAll('input[name="cartPaymentMethod"]').forEach((input) => {
+        input.addEventListener("change", updateCartSummary);
     });
 
-    el.submitOrder.addEventListener("click", async () => {
-        updateOrderSummary();
+    el.cartCheckoutBtn.addEventListener("click", async () => {
+        updateCartSummary();
         try {
-            collectOrderCustomerData();
+            collectCartCustomerData();
         } catch (error) {
-            el.orderMessage.textContent = error.message;
-            return;
-        }
-        if ((state.orderPaymentMethod || "CARD_NOW") === "ON_DELIVERY") {
-            await submitOrderRequest("ON_DELIVERY");
+            el.cartMessage.textContent = error.message;
             return;
         }
 
-        try {
-            const paymentDetailsResponse = await api("/api/orders/payment-details");
-            const fee = Number(paymentDetailsResponse.cityDeliveryFee);
-            if (Number.isFinite(fee) && fee >= 0) {
-                state.cityDeliveryFee = fee;
-                updateOrderSummary();
-            }
-            const details = (paymentDetailsResponse.paymentDetails || "").trim();
-            if (!details) {
-                throw new Error("Админ еще не заполнил данные для оплаты");
-            }
-
-            el.paymentDetailsText.textContent = details;
-            el.orderStep2.classList.add("hidden");
-            el.orderStep3.classList.remove("hidden");
-            el.orderMessage.textContent = "";
-        } catch (error) {
-            el.orderMessage.textContent = error.message;
+        if (!state.cartItems.length) {
+            el.cartMessage.textContent = "Корзина пуста";
+            return;
         }
+
+        if ((state.cartPaymentMethod || "CARD_NOW") === "ON_DELIVERY") {
+            await submitCartOrder("ON_DELIVERY");
+            return;
+        }
+
+        await prepareCardPaymentStep();
     });
 
-    el.confirmPaidBtn.addEventListener("click", async () => {
-        await submitOrderRequest("CARD_NOW");
+    el.cartConfirmPaidBtn.addEventListener("click", async () => {
+        await submitCartOrder("CARD_NOW");
     });
 
-    el.backToStep2Btn.addEventListener("click", () => {
-        el.orderStep3.classList.add("hidden");
-        el.orderStep2.classList.remove("hidden");
+    el.cartBackFromPaymentBtn.addEventListener("click", () => {
+        el.cartPaymentStep.classList.add("hidden");
+        el.cartMessage.textContent = "";
     });
 
-    el.closeOrderModal.addEventListener("click", closeOrder);
+    syncCartAddressByDeliveryMethod();
+    updateCartSummary();
+}
+
+function initProductModalFlow() {
+    el.orderBtn.addEventListener("click", addSelectedProductToCart);
+
     el.closeProductModal.addEventListener("click", closeProduct);
+
+    el.modalUnit.addEventListener("change", () => {
+        const unit = el.modalUnit.value;
+        if (!el.modalQuantity.value || Number(el.modalQuantity.value) <= 0) {
+            el.modalQuantity.value = defaultQtyForUnit(unit);
+        }
+    });
 
     window.addEventListener("click", (event) => {
         if (event.target === el.productModal) {
             closeProduct();
-        }
-        if (event.target === el.orderModal) {
-            closeOrder();
         }
     });
 }
 
 function renderSimpleList(node, rows) {
     node.innerHTML = rows.length
-        ? rows.map((row) => `<div class=\"list-row\">${escapeHtml(row)}</div>`).join("")
+        ? rows.map((row) => `<div class="list-row">${escapeHtml(row)}</div>`).join("")
         : '<div class="list-row">Нет данных</div>';
 }
 
@@ -1050,6 +1363,7 @@ async function loadAdminData() {
         if (Number.isFinite(fee) && fee >= 0) {
             state.cityDeliveryFee = fee;
         }
+        updateCartSummary();
     } catch (error) {
         renderSimpleList(el.adminsList, [`Ошибка: ${error.message}`]);
         renderSimpleList(el.usersList, []);
@@ -1060,6 +1374,18 @@ async function loadAdminData() {
             el.paymentDetailsInput.value = "";
         }
     }
+}
+
+function orderItemsMarkup(order) {
+    const items = Array.isArray(order.items) ? order.items : [];
+    if (!items.length) {
+        return '<div class="order-item-line">Нет позиций</div>';
+    }
+    return items.map((item) => {
+        const quantity = formatQuantity(item.quantity);
+        const lineTotal = Number(item.lineTotal || (Number(item.quantity || 0) * Number(item.unitPrice || 0)));
+        return `<div class="order-item-line">• ${escapeHtml(item.productName || "Товар")} — ${escapeHtml(quantity)} ${escapeHtml(unitLabel(item.quantityUnit))} × ${escapeHtml(money(item.unitPrice))} = ${escapeHtml(money(lineTotal))}</div>`;
+    }).join("");
 }
 
 function renderAdminOrders(orders) {
@@ -1078,7 +1404,7 @@ function renderAdminOrders(orders) {
         return `
             <article class="order-card">
                 <div class="order-head">
-                    <h3 class="order-title">#${order.id} · ${escapeHtml(order.productName)}</h3>
+                    <h3 class="order-title">#${order.id} · ${escapeHtml(order.productName || "Сборный заказ")}</h3>
                     <span class="order-status ${statusClass}">${escapeHtml(orderDisplayStatus(order))}</span>
                 </div>
                 <div class="order-head">
@@ -1087,8 +1413,8 @@ function renderAdminOrders(orders) {
                 </div>
                 <div class="order-grid">
                     <div class="order-cell">
-                        <p class="order-label">Количество</p>
-                        <p class="order-value">${escapeHtml(order.quantity)} ${escapeHtml(unitLabel(order.quantityUnit))}</p>
+                        <p class="order-label">Позиции заказа</p>
+                        <div class="order-items-lines">${orderItemsMarkup(order)}</div>
                     </div>
                     <div class="order-cell">
                         <p class="order-label">Товары</p>
@@ -1123,11 +1449,60 @@ function renderAdminOrders(orders) {
                         <p class="order-value">${escapeHtml((order.paymentDetailsSnapshot || "-").replace(/\n/g, " | "))}</p>
                     </div>
                 </div>
+                <div class="order-actions">
+                    ${order.accepted
+            ? `<div class="accept-note">Заказ принят. ETA: ${escapeHtml(order.deliveryEta || "-")}</div>`
+            : `
+                        <button class="btn-inline js-accept-order-open" data-order-id="${order.id}">Заказ принят</button>
+                        <div class="accept-form hidden" data-accept-form="${order.id}">
+                            <input type="text" data-eta-input="${order.id}" placeholder="Например: 12 мая, 18:00"/>
+                            <button class="btn-inline js-accept-order-submit" data-order-id="${order.id}">Готово</button>
+                        </div>
+                    `}
+                </div>
             </article>
         `;
     }).join("");
 
     el.adminOrdersGrid.innerHTML = markup;
+
+    document.querySelectorAll(".js-accept-order-open").forEach((button) => {
+        button.addEventListener("click", () => {
+            const id = button.dataset.orderId;
+            const form = el.adminOrdersGrid.querySelector(`[data-accept-form="${id}"]`);
+            if (!form) {
+                return;
+            }
+            form.classList.toggle("hidden");
+            const input = form.querySelector("input");
+            if (input) {
+                input.focus();
+            }
+        });
+    });
+
+    document.querySelectorAll(".js-accept-order-submit").forEach((button) => {
+        button.addEventListener("click", async () => {
+            const id = Number(button.dataset.orderId);
+            const input = el.adminOrdersGrid.querySelector(`[data-eta-input="${id}"]`);
+            const eta = (input?.value || "").trim();
+            if (!eta) {
+                notify("Введите ориентировочное время доставки");
+                return;
+            }
+
+            try {
+                const result = await api(`/api/admin/orders/${id}/accept`, {
+                    method: "POST",
+                    body: JSON.stringify({eta})
+                });
+                notify(result.message || "Заказ принят");
+                await loadAdminOrders();
+            } catch (error) {
+                notify(error.message);
+            }
+        });
+    });
 }
 
 async function loadAdminOrders() {
@@ -1399,6 +1774,10 @@ async function bootstrapUser() {
         state.userId = currentUser.maxUserId || state.userId;
         updateIdentityUi();
         setAdminVisibility();
+
+        if (state.userFullName && !el.cartFullName.value) {
+            el.cartFullName.value = state.userFullName;
+        }
     } catch (error) {
         console.error(error);
         state.authenticated = false;
@@ -1416,12 +1795,18 @@ async function init() {
 
     initTabs();
     initShopControls();
-    initOrderFlow();
+    initCartFlow();
+    initProductModalFlow();
     initProductFormControls();
     initAdminForms();
 
     await bootstrapUser();
+    loadCartFromStorage();
+    updateCartBadge();
+
     await Promise.all([loadCatalog(), loadFixPrice(), loadInfo(), loadCheckoutConfig()]);
+
+    renderCart();
 
     setInterval(() => {
         if (!state.isAdmin || !isTabActive("admin-orders")) {

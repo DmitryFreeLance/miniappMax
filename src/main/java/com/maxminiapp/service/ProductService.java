@@ -7,6 +7,7 @@ import com.maxminiapp.enums.UnitMode;
 import com.maxminiapp.exception.BadRequestException;
 import com.maxminiapp.exception.NotFoundException;
 import com.maxminiapp.model.Product;
+import com.maxminiapp.repository.OrderItemRepository;
 import com.maxminiapp.repository.OrderRepository;
 import com.maxminiapp.repository.ProductRepository;
 import org.springframework.stereotype.Service;
@@ -20,10 +21,16 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
 
-    public ProductService(ProductRepository productRepository, OrderRepository orderRepository) {
+    public ProductService(
+            ProductRepository productRepository,
+            OrderRepository orderRepository,
+            OrderItemRepository orderItemRepository
+    ) {
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
+        this.orderItemRepository = orderItemRepository;
     }
 
     public List<ProductResponse> getCatalog() {
@@ -73,7 +80,7 @@ public class ProductService {
     public String deleteForAdmin(Long id) {
         Product product = getByIdOrThrow(id);
 
-        if (orderRepository.existsByProductId(product.getId())) {
+        if (orderRepository.existsByProductId(product.getId()) || orderItemRepository.existsByProductId(product.getId())) {
             product.setActive(false);
             productRepository.save(product);
             return "У товара уже есть заказы. Товар скрыт из каталога и Fix Price.";
