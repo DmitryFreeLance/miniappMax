@@ -102,11 +102,142 @@ const el = {
     paymentDetailsInput: document.getElementById("paymentDetailsInput"),
     addAdminForm: document.getElementById("addAdminForm"),
     adminsList: document.getElementById("adminsList"),
-    usersList: document.getElementById("usersList")
+    usersList: document.getElementById("usersList"),
+
+    appDialog: document.getElementById("appDialog"),
+    dialogTitle: document.getElementById("dialogTitle"),
+    dialogMessage: document.getElementById("dialogMessage"),
+    dialogInput: document.getElementById("dialogInput"),
+    dialogCancelBtn: document.getElementById("dialogCancelBtn"),
+    dialogConfirmBtn: document.getElementById("dialogConfirmBtn")
 };
 
+let dialogResolver = null;
+let dialogLastActive = null;
+
+function closeDialog(payload) {
+    if (!dialogResolver) {
+        return;
+    }
+    el.appDialog.classList.add("hidden");
+    const resolver = dialogResolver;
+    dialogResolver = null;
+    if (dialogLastActive && typeof dialogLastActive.focus === "function") {
+        dialogLastActive.focus();
+    }
+    resolver(payload);
+}
+
+function showDialog(options) {
+    const cfg = options || {};
+    if (dialogResolver) {
+        closeDialog({confirmed: false, value: null});
+    }
+
+    dialogLastActive = document.activeElement;
+
+    el.dialogTitle.textContent = cfg.title || "Уведомление";
+    el.dialogMessage.textContent = cfg.message || "";
+
+    const hasInput = !!cfg.withInput;
+    el.dialogInput.classList.toggle("hidden", !hasInput);
+    el.dialogInput.value = hasInput ? (cfg.inputValue || "") : "";
+    el.dialogInput.placeholder = hasInput ? (cfg.inputPlaceholder || "") : "";
+    el.dialogInput.type = cfg.inputType || "text";
+
+    const hasCancel = !!cfg.withCancel;
+    el.dialogCancelBtn.classList.toggle("hidden", !hasCancel);
+    el.dialogCancelBtn.textContent = cfg.cancelText || "Отмена";
+    el.dialogConfirmBtn.textContent = cfg.confirmText || "ОК";
+
+    el.appDialog.classList.remove("hidden");
+
+    return new Promise((resolve) => {
+        dialogResolver = resolve;
+        if (hasInput) {
+            requestAnimationFrame(() => {
+                el.dialogInput.focus();
+                el.dialogInput.select();
+            });
+        } else {
+            requestAnimationFrame(() => {
+                el.dialogConfirmBtn.focus();
+            });
+        }
+    });
+}
+
+function initDialog() {
+    el.dialogConfirmBtn.addEventListener("click", () => {
+        const value = !el.dialogInput.classList.contains("hidden")
+            ? el.dialogInput.value
+            : null;
+        closeDialog({confirmed: true, value});
+    });
+
+    el.dialogCancelBtn.addEventListener("click", () => {
+        closeDialog({confirmed: false, value: null});
+    });
+
+    el.appDialog.addEventListener("click", (event) => {
+        if (event.target === el.appDialog) {
+            closeDialog({confirmed: false, value: null});
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (el.appDialog.classList.contains("hidden")) {
+            return;
+        }
+        if (event.key === "Escape") {
+            event.preventDefault();
+            closeDialog({confirmed: false, value: null});
+            return;
+        }
+        if (event.key === "Enter") {
+            event.preventDefault();
+            const value = !el.dialogInput.classList.contains("hidden")
+                ? el.dialogInput.value
+                : null;
+            closeDialog({confirmed: true, value});
+        }
+    });
+}
+
+async function dialogInfo(message, title = "Уведомление", confirmText = "ОК") {
+    await showDialog({title, message, confirmText});
+}
+
+async function dialogConfirm(message, title = "Подтверждение", confirmText = "Подтвердить", cancelText = "Отмена") {
+    const result = await showDialog({
+        title,
+        message,
+        withCancel: true,
+        confirmText,
+        cancelText
+    });
+    return !!result?.confirmed;
+}
+
+async function dialogPrompt(message, title = "Введите значение", inputPlaceholder = "", inputValue = "", confirmText = "Готово", cancelText = "Отмена") {
+    const result = await showDialog({
+        title,
+        message,
+        withInput: true,
+        inputPlaceholder,
+        inputValue,
+        withCancel: true,
+        confirmText,
+        cancelText
+    });
+    if (!result?.confirmed) {
+        return null;
+    }
+    return (result.value || "").trim();
+}
+
 function notify(message) {
-    alert(message);
+    void dialogInfo(String(message || ""));
 }
 
 function money(value) {
@@ -1026,16 +1157,20 @@ function renderCart() {
     });
 
     el.cartItems.querySelectorAll(".js-cart-change").forEach((button) => {
-        button.addEventListener("click", () => {
+        button.addEventListener("click", async () => {
             const key = button.dataset.key;
             const cartItem = state.cartItems.find((item) => item.key === key);
             if (!cartItem) {
                 return;
             }
 
-            const raw = prompt(
-                `Введите новое количество для «${cartItem.productName}» (${unitLabel(cartItem.quantityUnit)}):`,
-                String(cartItem.quantity)
+            const raw = await dialogPrompt(
+                `Введите новое количество для «${cartItem.productName}» (${unitLabel(cartItem.quantityUnit)}).`,
+                "Изменить количество",
+                `Например: ${cartItem.quantity}`,
+                String(cartItem.quantity),
+                "Сохранить",
+                "Отмена"
             );
             if (raw === null) {
                 return;
@@ -1132,7 +1267,9 @@ async function submitCartOrder(paymentMethodOverride) {
             el.cartPaymentStep.classList.add("hidden");
         }
         renderCart();
-        el.cartMessage.textContent = response.message || "Заказ создан. С вами свяжется менеджер.";
+        const successMessage = response.message || "Заказ создан. С вами свяжется менеджер.";
+        el.cartMessage.textContent = successMessage;
+        await dialogInfo(successMessage, "Заказ оформлен");
 
         await Promise.all([loadCatalog(), loadFixPrice()]);
         if (state.isAdmin) {
@@ -1157,13 +1294,15 @@ async function showCardPaymentAlertAndSubmit() {
             throw new Error("Админ еще не заполнил данные для оплаты");
         }
 
-        alert(
+        const confirmed = await dialogConfirm(
             `Оплата сейчас\n\n`
             + `Сумма к переводу: ${money(state.cartTotal)}\n\n`
-            + `Реквизиты для оплаты:\n${details}`
+            + `Реквизиты для оплаты:\n${details}\n\n`
+            + `Нажмите «Оплатил», когда перевод выполнен.`,
+            "Подтверждение оплаты",
+            "Оплатил",
+            "Отмена"
         );
-
-        const confirmed = confirm("После перевода нажмите ОК, чтобы отправить заказ в работу.");
         if (!confirmed) {
             el.cartMessage.textContent = "Заказ не отправлен. Можно завершить оплату и нажать «Оформить заказ» снова.";
             return;
@@ -1280,7 +1419,12 @@ function renderAdminProducts(products) {
         button.addEventListener("click", async () => {
             const productId = Number(button.dataset.id);
             const productName = button.dataset.name || "товар";
-            const confirmed = window.confirm(`Удалить «${productName}»?`);
+            const confirmed = await dialogConfirm(
+                `Удалить «${productName}»?`,
+                "Подтверждение удаления",
+                "Удалить",
+                "Отмена"
+            );
             if (!confirmed) {
                 return;
             }
@@ -1321,7 +1465,12 @@ function renderAdminPosts(posts) {
         button.addEventListener("click", async () => {
             const postId = Number(button.dataset.id);
             const postTitle = button.dataset.title || "пост";
-            const confirmed = window.confirm(`Удалить пост «${postTitle}»?`);
+            const confirmed = await dialogConfirm(
+                `Удалить пост «${postTitle}»?`,
+                "Подтверждение удаления",
+                "Удалить",
+                "Отмена"
+            );
             if (!confirmed) {
                 return;
             }
@@ -1460,11 +1609,7 @@ function renderAdminOrders(orders) {
                     ${order.accepted
             ? `<div class="accept-note">Заказ принят. ETA: ${escapeHtml(order.deliveryEta || "-")}</div>`
             : `
-                        <button class="btn-inline js-accept-order-open" data-order-id="${order.id}">Заказ принят</button>
-                        <div class="accept-form hidden" data-accept-form="${order.id}">
-                            <input type="text" data-eta-input="${order.id}" placeholder="Например: 12 мая, 18:00"/>
-                            <button class="btn-inline js-accept-order-submit" data-order-id="${order.id}">Готово</button>
-                        </div>
+                        <button class="btn-inline js-accept-order" data-order-id="${order.id}">Заказ принят</button>
                     `}
                 </div>
             </article>
@@ -1473,28 +1618,18 @@ function renderAdminOrders(orders) {
 
     el.adminOrdersGrid.innerHTML = markup;
 
-    document.querySelectorAll(".js-accept-order-open").forEach((button) => {
-        button.addEventListener("click", () => {
-            const id = button.dataset.orderId;
-            const form = el.adminOrdersGrid.querySelector(`[data-accept-form="${id}"]`);
-            if (!form) {
-                return;
-            }
-            form.classList.toggle("hidden");
-            const input = form.querySelector("input");
-            if (input) {
-                input.focus();
-            }
-        });
-    });
-
-    document.querySelectorAll(".js-accept-order-submit").forEach((button) => {
+    document.querySelectorAll(".js-accept-order").forEach((button) => {
         button.addEventListener("click", async () => {
             const id = Number(button.dataset.orderId);
-            const input = el.adminOrdersGrid.querySelector(`[data-eta-input="${id}"]`);
-            const eta = (input?.value || "").trim();
+            const eta = await dialogPrompt(
+                "Введите ориентировочную дату и время доставки для клиента.",
+                "Заказ принят",
+                "Например: 12 мая, 18:00",
+                "",
+                "Готово",
+                "Отмена"
+            );
             if (!eta) {
-                notify("Введите ориентировочное время доставки");
                 return;
             }
 
@@ -1800,6 +1935,7 @@ async function init() {
         window.WebApp.ready();
     }
 
+    initDialog();
     initTabs();
     initShopControls();
     initCartFlow();
