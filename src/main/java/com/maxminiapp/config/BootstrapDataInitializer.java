@@ -13,11 +13,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
+import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 @Component
 public class BootstrapDataInitializer implements CommandLineRunner {
@@ -29,23 +36,27 @@ public class BootstrapDataInitializer implements CommandLineRunner {
     private final ProductRepository productRepository;
     private final InfoPostRepository infoPostRepository;
     private final AppSettingsService appSettingsService;
+    private final DataSource dataSource;
 
     public BootstrapDataInitializer(
             AppProperties appProperties,
             AppUserRepository appUserRepository,
             ProductRepository productRepository,
             InfoPostRepository infoPostRepository,
-            AppSettingsService appSettingsService
+            AppSettingsService appSettingsService,
+            DataSource dataSource
     ) {
         this.appProperties = appProperties;
         this.appUserRepository = appUserRepository;
         this.productRepository = productRepository;
         this.infoPostRepository = infoPostRepository;
         this.appSettingsService = appSettingsService;
+        this.dataSource = dataSource;
     }
 
     @Override
     public void run(String... args) throws Exception {
+        migrateSchemaForLegacySqlite();
         Files.createDirectories(Path.of(appProperties.getUploadsDir()));
         normalizeExistingProducts();
         appSettingsService.seedPaymentDetailsIfEmpty(appProperties.getDefaultPaymentDetails());
@@ -174,5 +185,60 @@ public class BootstrapDataInitializer implements CommandLineRunner {
         if (!toUpdate.isEmpty()) {
             productRepository.saveAll(toUpdate);
         }
+    }
+
+    private void migrateSchemaForLegacySqlite() {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            Set<String> orderColumns = readColumns(connection, "orders");
+            if (orderColumns.isEmpty()) {
+                return;
+            }
+            if (!orderColumns.contains("is_accepted")) {
+                statement.execute("ALTER TABLE orders ADD COLUMN is_accepted INTEGER NOT NULL DEFAULT 0");
+                log.info("Added missing column orders.is_accepted");
+            }
+            if (!orderColumns.contains("accepted_at")) {
+                statement.execute("ALTER TABLE orders ADD COLUMN accepted_at TEXT");
+                log.info("Added missing column orders.accepted_at");
+            }
+            if (!orderColumns.contains("delivery_eta")) {
+                statement.execute("ALTER TABLE orders ADD COLUMN delivery_eta TEXT");
+                log.info("Added missing column orders.delivery_eta");
+            }
+
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS order_items (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        order_id INTEGER NOT NULL,
+                        product_id INTEGER NOT NULL,
+                        product_name TEXT NOT NULL,
+                        quantity NUMERIC NOT NULL,
+                        quantity_unit TEXT NOT NULL,
+                        unit_price NUMERIC NOT NULL,
+                        line_total NUMERIC NOT NULL,
+                        FOREIGN KEY(order_id) REFERENCES orders(id),
+                        FOREIGN KEY(product_id) REFERENCES products(id)
+                    )
+                    """);
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id)");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id)");
+        } catch (Exception ex) {
+            log.warn("Legacy schema migration skipped: {}", ex.getMessage());
+        }
+    }
+
+    private Set<String> readColumns(Connection connection, String table) throws Exception {
+        Set<String> columns = new HashSet<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet rs = statement.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (rs.next()) {
+                String name = rs.getString("name");
+                if (name != null) {
+                    columns.add(name.toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        return columns;
     }
 }

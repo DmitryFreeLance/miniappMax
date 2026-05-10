@@ -977,7 +977,9 @@ function updateCartSummary() {
 
 function renderCart() {
     el.cartMessage.textContent = "";
-    el.cartPaymentStep.classList.add("hidden");
+    if (el.cartPaymentStep) {
+        el.cartPaymentStep.classList.add("hidden");
+    }
     el.cartItems.innerHTML = "";
 
     if (!state.cartItems.length) {
@@ -1004,8 +1006,7 @@ function renderCart() {
                     <p class="cart-item-total">${escapeHtml(money(lineTotal))}</p>
                 </div>
                 <div class="cart-item-actions">
-                    <input type="number" class="js-cart-qty" data-key="${escapeHtml(item.key)}" min="0.001" step="0.001" value="${escapeHtml(item.quantity)}"/>
-                    <button class="btn-inline js-cart-update" data-key="${escapeHtml(item.key)}" type="button">Обновить</button>
+                    <button class="btn-inline js-cart-change" data-key="${escapeHtml(item.key)}" type="button">Изменить количество</button>
                     <button class="btn-inline cart-item-remove js-cart-remove" data-key="${escapeHtml(item.key)}" type="button">Удалить</button>
                 </div>
             </article>
@@ -1024,23 +1025,25 @@ function renderCart() {
         });
     });
 
-    el.cartItems.querySelectorAll(".js-cart-update").forEach((button) => {
+    el.cartItems.querySelectorAll(".js-cart-change").forEach((button) => {
         button.addEventListener("click", () => {
             const key = button.dataset.key;
-            const node = Array.from(el.cartItems.querySelectorAll(".js-cart-qty"))
-                .find((itemNode) => itemNode.dataset.key === key);
-            if (!node) {
-                return;
-            }
-
-            const qty = Number(node.value);
-            if (!Number.isFinite(qty) || qty <= 0) {
-                notify("Введите корректное количество");
-                return;
-            }
-
             const cartItem = state.cartItems.find((item) => item.key === key);
             if (!cartItem) {
+                return;
+            }
+
+            const raw = prompt(
+                `Введите новое количество для «${cartItem.productName}» (${unitLabel(cartItem.quantityUnit)}):`,
+                String(cartItem.quantity)
+            );
+            if (raw === null) {
+                return;
+            }
+
+            const qty = Number(raw.replace(",", "."));
+            if (!Number.isFinite(qty) || qty <= 0) {
+                notify("Введите корректное количество");
                 return;
             }
 
@@ -1125,7 +1128,9 @@ async function submitCartOrder(paymentMethodOverride) {
         state.cartItems = [];
         saveCartToStorage();
         updateCartBadge();
-        el.cartPaymentStep.classList.add("hidden");
+        if (el.cartPaymentStep) {
+            el.cartPaymentStep.classList.add("hidden");
+        }
         renderCart();
         el.cartMessage.textContent = response.message || "Заказ создан. С вами свяжется менеджер.";
 
@@ -1138,7 +1143,7 @@ async function submitCartOrder(paymentMethodOverride) {
     }
 }
 
-async function prepareCardPaymentStep() {
+async function showCardPaymentAlertAndSubmit() {
     try {
         const paymentDetailsResponse = await api("/api/orders/payment-details");
         const fee = Number(paymentDetailsResponse.cityDeliveryFee);
@@ -1152,8 +1157,19 @@ async function prepareCardPaymentStep() {
             throw new Error("Админ еще не заполнил данные для оплаты");
         }
 
-        el.cartPaymentDetailsText.textContent = details;
-        el.cartPaymentStep.classList.remove("hidden");
+        alert(
+            `Оплата сейчас\n\n`
+            + `Сумма к переводу: ${money(state.cartTotal)}\n\n`
+            + `Реквизиты для оплаты:\n${details}`
+        );
+
+        const confirmed = confirm("После перевода нажмите ОК, чтобы отправить заказ в работу.");
+        if (!confirmed) {
+            el.cartMessage.textContent = "Заказ не отправлен. Можно завершить оплату и нажать «Оформить заказ» снова.";
+            return;
+        }
+
+        await submitCartOrder("CARD_NOW");
         el.cartMessage.textContent = "";
     } catch (error) {
         el.cartMessage.textContent = error.message;
@@ -1191,16 +1207,7 @@ function initCartFlow() {
             return;
         }
 
-        await prepareCardPaymentStep();
-    });
-
-    el.cartConfirmPaidBtn.addEventListener("click", async () => {
-        await submitCartOrder("CARD_NOW");
-    });
-
-    el.cartBackFromPaymentBtn.addEventListener("click", () => {
-        el.cartPaymentStep.classList.add("hidden");
-        el.cartMessage.textContent = "";
+        await showCardPaymentAlertAndSubmit();
     });
 
     syncCartAddressByDeliveryMethod();
