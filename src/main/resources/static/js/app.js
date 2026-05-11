@@ -12,8 +12,10 @@ const state = {
     fixPriceQuery: "",
     catalogOnlyAvailable: false,
     fixOnlyAvailable: false,
+    adminProducts: [],
 
     selectedProduct: null,
+    editingProductId: null,
 
     cartItems: [],
     cartDeliveryMethod: "CITY_DELIVERY",
@@ -109,7 +111,26 @@ const el = {
     dialogMessage: document.getElementById("dialogMessage"),
     dialogInput: document.getElementById("dialogInput"),
     dialogCancelBtn: document.getElementById("dialogCancelBtn"),
-    dialogConfirmBtn: document.getElementById("dialogConfirmBtn")
+    dialogConfirmBtn: document.getElementById("dialogConfirmBtn"),
+
+    editProductModal: document.getElementById("editProductModal"),
+    editProductForm: document.getElementById("editProductForm"),
+    editProductName: document.getElementById("editProductName"),
+    editProductDescription: document.getElementById("editProductDescription"),
+    editSectionType: document.getElementById("editSectionType"),
+    editOldPriceWrapper: document.getElementById("editOldPriceWrapper"),
+    editOldPriceInput: document.getElementById("editOldPriceInput"),
+    editUnitModeSelect: document.getElementById("editUnitModeSelect"),
+    editPricePcsWrapper: document.getElementById("editPricePcsWrapper"),
+    editPricePcsInput: document.getElementById("editPricePcsInput"),
+    editPriceCubicWrapper: document.getElementById("editPriceCubicWrapper"),
+    editPriceCubicInput: document.getElementById("editPriceCubicInput"),
+    editStockPcsWrapper: document.getElementById("editStockPcsWrapper"),
+    editStockPcsInput: document.getElementById("editStockPcsInput"),
+    editStockCubicWrapper: document.getElementById("editStockCubicWrapper"),
+    editStockCubicInput: document.getElementById("editStockCubicInput"),
+    editProductActiveSelect: document.getElementById("editProductActiveSelect"),
+    cancelEditProductBtn: document.getElementById("cancelEditProductBtn")
 };
 
 let dialogResolver = null;
@@ -1404,9 +1425,14 @@ function renderAdminProducts(products) {
                             <span class="tag catalog">${escapeHtml(unitModeLabel(item.unitMode))}</span>
                         </div>
                     </div>
-                    <button class="btn-inline btn-danger js-delete-product" data-id="${item.id}" data-name="${escapeHtml(item.name)}">
-                        Удалить
-                    </button>
+                    <div class="manage-actions">
+                        <button class="btn-inline btn-edit js-edit-product" data-id="${item.id}">
+                            Редактировать
+                        </button>
+                        <button class="btn-inline btn-danger js-delete-product" data-id="${item.id}" data-name="${escapeHtml(item.name)}">
+                            Удалить
+                        </button>
+                    </div>
                 </article>
             `;
         }).join("");
@@ -1414,6 +1440,13 @@ function renderAdminProducts(products) {
 
     renderGroup(catalogProducts, el.adminCatalogProducts);
     renderGroup(fixPriceProducts, el.adminFixPriceProducts);
+
+    document.querySelectorAll(".js-edit-product").forEach((button) => {
+        button.addEventListener("click", () => {
+            const productId = Number(button.dataset.id);
+            openEditProductModal(productId);
+        });
+    });
 
     document.querySelectorAll(".js-delete-product").forEach((button) => {
         button.addEventListener("click", async () => {
@@ -1510,6 +1543,7 @@ async function loadAdminData() {
             users.map((item) => `ID ${item.maxUserId} | ${item.phone || "телефон не указан"} | ${item.admin ? "admin" : "user"}`)
         );
 
+        state.adminProducts = Array.isArray(products) ? products : [];
         renderAdminProducts(products);
         renderAdminPosts(posts);
         if (el.paymentDetailsInput) {
@@ -1521,6 +1555,7 @@ async function loadAdminData() {
         }
         updateCartSummary();
     } catch (error) {
+        state.adminProducts = [];
         renderSimpleList(el.adminsList, [`Ошибка: ${error.message}`]);
         renderSimpleList(el.usersList, []);
         el.adminCatalogProducts.innerHTML = '<div class="empty">Ошибка загрузки товаров</div>';
@@ -1675,53 +1710,6 @@ async function uploadImage(file) {
     return response.imageUrl;
 }
 
-function syncStockInputsByUnitMode() {
-    const mode = el.unitModeSelect.value;
-
-    const pcsVisible = mode === "PCS_ONLY" || mode === "BOTH";
-    const cubicVisible = mode === "CUBIC_ONLY" || mode === "BOTH";
-
-    el.pricePcsWrapper.classList.toggle("hidden", !pcsVisible);
-    el.priceCubicWrapper.classList.toggle("hidden", !cubicVisible);
-    el.stockPcsWrapper.classList.toggle("hidden", !pcsVisible);
-    el.stockCubicWrapper.classList.toggle("hidden", !cubicVisible);
-
-    el.pricePcsInput.required = pcsVisible;
-    el.priceCubicInput.required = cubicVisible;
-    el.stockPcsInput.required = pcsVisible;
-    el.stockCubicInput.required = cubicVisible;
-
-    if (!pcsVisible) {
-        el.pricePcsInput.value = "";
-    }
-    if (!cubicVisible) {
-        el.priceCubicInput.value = "";
-    }
-    if (!pcsVisible) {
-        el.stockPcsInput.value = "";
-    }
-    if (!cubicVisible) {
-        el.stockCubicInput.value = "";
-    }
-}
-
-function syncFixPriceFields() {
-    const isFixPrice = el.sectionType.value === "FIX_PRICE";
-    el.oldPriceWrapper.classList.toggle("hidden", !isFixPrice);
-    el.oldPriceInput.required = isFixPrice;
-
-    if (!isFixPrice) {
-        el.oldPriceInput.value = "";
-    }
-}
-
-function initProductFormControls() {
-    el.unitModeSelect.addEventListener("change", syncStockInputsByUnitMode);
-    el.sectionType.addEventListener("change", syncFixPriceFields);
-    syncStockInputsByUnitMode();
-    syncFixPriceFields();
-}
-
 function parseOptionalNumber(value) {
     if (value === null || value === undefined || value === "") {
         return null;
@@ -1729,6 +1717,221 @@ function parseOptionalNumber(value) {
 
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getCreateProductControls() {
+    return {
+        sectionType: el.sectionType,
+        oldPriceWrapper: el.oldPriceWrapper,
+        oldPriceInput: el.oldPriceInput,
+        unitModeSelect: el.unitModeSelect,
+        pricePcsWrapper: el.pricePcsWrapper,
+        pricePcsInput: el.pricePcsInput,
+        priceCubicWrapper: el.priceCubicWrapper,
+        priceCubicInput: el.priceCubicInput,
+        stockPcsWrapper: el.stockPcsWrapper,
+        stockPcsInput: el.stockPcsInput,
+        stockCubicWrapper: el.stockCubicWrapper,
+        stockCubicInput: el.stockCubicInput
+    };
+}
+
+function getEditProductControls() {
+    return {
+        sectionType: el.editSectionType,
+        oldPriceWrapper: el.editOldPriceWrapper,
+        oldPriceInput: el.editOldPriceInput,
+        unitModeSelect: el.editUnitModeSelect,
+        pricePcsWrapper: el.editPricePcsWrapper,
+        pricePcsInput: el.editPricePcsInput,
+        priceCubicWrapper: el.editPriceCubicWrapper,
+        priceCubicInput: el.editPriceCubicInput,
+        stockPcsWrapper: el.editStockPcsWrapper,
+        stockPcsInput: el.editStockPcsInput,
+        stockCubicWrapper: el.editStockCubicWrapper,
+        stockCubicInput: el.editStockCubicInput
+    };
+}
+
+function syncStockInputsByUnitMode(controls, clearHiddenValues = true) {
+    const mode = controls.unitModeSelect.value;
+
+    const pcsVisible = mode === "PCS_ONLY" || mode === "BOTH";
+    const cubicVisible = mode === "CUBIC_ONLY" || mode === "BOTH";
+
+    controls.pricePcsWrapper.classList.toggle("hidden", !pcsVisible);
+    controls.priceCubicWrapper.classList.toggle("hidden", !cubicVisible);
+    controls.stockPcsWrapper.classList.toggle("hidden", !pcsVisible);
+    controls.stockCubicWrapper.classList.toggle("hidden", !cubicVisible);
+
+    controls.pricePcsInput.required = pcsVisible;
+    controls.priceCubicInput.required = cubicVisible;
+    controls.stockPcsInput.required = pcsVisible;
+    controls.stockCubicInput.required = cubicVisible;
+
+    if (clearHiddenValues && !pcsVisible) {
+        controls.pricePcsInput.value = "";
+        controls.stockPcsInput.value = "";
+    }
+    if (clearHiddenValues && !cubicVisible) {
+        controls.priceCubicInput.value = "";
+        controls.stockCubicInput.value = "";
+    }
+}
+
+function syncFixPriceFields(controls, clearHiddenValues = true) {
+    const isFixPrice = controls.sectionType.value === "FIX_PRICE";
+    controls.oldPriceWrapper.classList.toggle("hidden", !isFixPrice);
+    controls.oldPriceInput.required = isFixPrice;
+
+    if (clearHiddenValues && !isFixPrice) {
+        controls.oldPriceInput.value = "";
+    }
+}
+
+function initProductFormControls() {
+    const createControls = getCreateProductControls();
+    el.unitModeSelect.addEventListener("change", () => {
+        syncStockInputsByUnitMode(createControls, true);
+    });
+    el.sectionType.addEventListener("change", () => {
+        syncFixPriceFields(createControls, true);
+    });
+    syncStockInputsByUnitMode(createControls, true);
+    syncFixPriceFields(createControls, true);
+}
+
+function buildProductPayload(formData, imageUrl, active) {
+    const unitMode = formData.get("unitMode");
+    const sectionType = formData.get("sectionType");
+    const isFixPrice = sectionType === "FIX_PRICE";
+
+    const stockPcs = (unitMode === "PCS_ONLY" || unitMode === "BOTH")
+        ? parseOptionalNumber(formData.get("stockPcs"))
+        : null;
+
+    const stockCubicMeters = (unitMode === "CUBIC_ONLY" || unitMode === "BOTH")
+        ? parseOptionalNumber(formData.get("stockCubicMeters"))
+        : null;
+
+    const pricePcs = (unitMode === "PCS_ONLY" || unitMode === "BOTH")
+        ? parseOptionalNumber(formData.get("pricePcs"))
+        : null;
+
+    const priceCubicMeters = (unitMode === "CUBIC_ONLY" || unitMode === "BOTH")
+        ? parseOptionalNumber(formData.get("priceCubicMeters"))
+        : null;
+
+    if ((unitMode === "PCS_ONLY" || unitMode === "BOTH") && stockPcs === null) {
+        throw new Error("Укажите остаток в штуках");
+    }
+
+    if ((unitMode === "CUBIC_ONLY" || unitMode === "BOTH") && stockCubicMeters === null) {
+        throw new Error("Укажите остаток в кубометрах");
+    }
+
+    if ((unitMode === "PCS_ONLY" || unitMode === "BOTH") && pricePcs === null) {
+        throw new Error("Укажите цену за штуку");
+    }
+
+    if ((unitMode === "CUBIC_ONLY" || unitMode === "BOTH") && priceCubicMeters === null) {
+        throw new Error("Укажите цену за кубометр");
+    }
+
+    const oldPrice = parseOptionalNumber(formData.get("oldPrice"));
+    const minPriceForValidation = unitMode === "BOTH"
+        ? Math.min(Number(pricePcs), Number(priceCubicMeters))
+        : Number(pricePcs ?? priceCubicMeters);
+
+    if (isFixPrice && (oldPrice === null || oldPrice <= minPriceForValidation)) {
+        throw new Error("Для Fix Price старая цена должна быть выше текущей");
+    }
+
+    const name = String(formData.get("name") || "").trim();
+    const description = String(formData.get("description") || "").trim();
+    if (!name) {
+        throw new Error("Укажите название товара");
+    }
+    if (!description) {
+        throw new Error("Укажите описание товара");
+    }
+
+    return {
+        name,
+        description,
+        imageUrl,
+        pricePcs,
+        priceCubicMeters,
+        oldPrice: isFixPrice ? oldPrice : null,
+        unitMode,
+        stockPcs,
+        stockCubicMeters,
+        fixPrice: isFixPrice,
+        active
+    };
+}
+
+function findAdminProductById(productId) {
+    const id = Number(productId);
+    return state.adminProducts.find((item) => Number(item.id) === id) || null;
+}
+
+function closeEditProductModal() {
+    state.editingProductId = null;
+    el.editProductModal.classList.add("hidden");
+}
+
+function openEditProductModal(productId) {
+    const product = findAdminProductById(productId);
+    if (!product) {
+        notify("Товар не найден");
+        return;
+    }
+
+    const editControls = getEditProductControls();
+    state.editingProductId = Number(product.id);
+
+    el.editProductName.value = product.name || "";
+    el.editProductDescription.value = product.description || "";
+    el.editSectionType.value = product.fixPrice ? "FIX_PRICE" : "CATALOG";
+    el.editOldPriceInput.value = product.oldPrice ?? "";
+    el.editUnitModeSelect.value = product.unitMode || "BOTH";
+    el.editPricePcsInput.value = product.pricePcs ?? "";
+    el.editPriceCubicInput.value = product.priceCubicMeters ?? "";
+    el.editStockPcsInput.value = product.stockPcs ?? "";
+    el.editStockCubicInput.value = product.stockCubicMeters ?? "";
+    el.editProductActiveSelect.value = product.active ? "true" : "false";
+
+    syncFixPriceFields(editControls, true);
+    syncStockInputsByUnitMode(editControls, true);
+    el.editProductModal.classList.remove("hidden");
+}
+
+function initEditProductModalControls() {
+    const editControls = getEditProductControls();
+
+    el.editUnitModeSelect.addEventListener("change", () => {
+        syncStockInputsByUnitMode(editControls, true);
+    });
+
+    el.editSectionType.addEventListener("change", () => {
+        syncFixPriceFields(editControls, true);
+    });
+
+    el.cancelEditProductBtn.addEventListener("click", closeEditProductModal);
+    el.editProductModal.addEventListener("click", (event) => {
+        if (event.target === el.editProductModal) {
+            closeEditProductModal();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || el.editProductModal.classList.contains("hidden")) {
+            return;
+        }
+        event.preventDefault();
+        closeEditProductModal();
+    });
 }
 
 function initAdminForms() {
@@ -1742,79 +1945,62 @@ function initAdminForms() {
 
         try {
             const formData = new FormData(el.productForm);
-            const unitMode = formData.get("unitMode");
-            const sectionType = formData.get("sectionType");
-            const isFixPrice = sectionType === "FIX_PRICE";
-
             const file = document.getElementById("productImage").files[0];
             if (!file) {
                 throw new Error("Загрузите фото товара");
             }
 
             const imageUrl = await uploadImage(file);
-
-            const stockPcs = (unitMode === "PCS_ONLY" || unitMode === "BOTH")
-                ? parseOptionalNumber(formData.get("stockPcs"))
-                : null;
-
-            const stockCubicMeters = (unitMode === "CUBIC_ONLY" || unitMode === "BOTH")
-                ? parseOptionalNumber(formData.get("stockCubicMeters"))
-                : null;
-
-            const pricePcs = (unitMode === "PCS_ONLY" || unitMode === "BOTH")
-                ? parseOptionalNumber(formData.get("pricePcs"))
-                : null;
-
-            const priceCubicMeters = (unitMode === "CUBIC_ONLY" || unitMode === "BOTH")
-                ? parseOptionalNumber(formData.get("priceCubicMeters"))
-                : null;
-
-            if ((unitMode === "PCS_ONLY" || unitMode === "BOTH") && stockPcs === null) {
-                throw new Error("Укажите остаток в штуках");
-            }
-
-            if ((unitMode === "CUBIC_ONLY" || unitMode === "BOTH") && stockCubicMeters === null) {
-                throw new Error("Укажите остаток в кубометрах");
-            }
-
-            if ((unitMode === "PCS_ONLY" || unitMode === "BOTH") && pricePcs === null) {
-                throw new Error("Укажите цену за штуку");
-            }
-
-            if ((unitMode === "CUBIC_ONLY" || unitMode === "BOTH") && priceCubicMeters === null) {
-                throw new Error("Укажите цену за кубометр");
-            }
-
-            const oldPrice = parseOptionalNumber(formData.get("oldPrice"));
-            const minPriceForValidation = unitMode === "BOTH"
-                ? Math.min(Number(pricePcs), Number(priceCubicMeters))
-                : Number(pricePcs ?? priceCubicMeters);
-
-            if (isFixPrice && (oldPrice === null || oldPrice <= minPriceForValidation)) {
-                throw new Error("Для Fix Price старая цена должна быть выше текущей");
-            }
+            const payload = buildProductPayload(formData, imageUrl, true);
 
             await api("/api/admin/products", {
                 method: "POST",
-                body: JSON.stringify({
-                    name: formData.get("name"),
-                    description: formData.get("description"),
-                    imageUrl,
-                    pricePcs,
-                    priceCubicMeters,
-                    oldPrice: isFixPrice ? oldPrice : null,
-                    unitMode,
-                    stockPcs,
-                    stockCubicMeters,
-                    fixPrice: isFixPrice,
-                    active: true
-                })
+                body: JSON.stringify(payload)
             });
 
             notify("Товар добавлен");
             el.productForm.reset();
-            syncStockInputsByUnitMode();
-            syncFixPriceFields();
+            const createControls = getCreateProductControls();
+            syncStockInputsByUnitMode(createControls, true);
+            syncFixPriceFields(createControls, true);
+            await Promise.all([loadCatalog(), loadFixPrice(), loadAdminData()]);
+        } catch (error) {
+            notify(error.message);
+        }
+    });
+
+    el.editProductForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        if (!state.isAdmin) {
+            notify("Недостаточно прав для редактирования товара");
+            return;
+        }
+
+        const productId = Number(state.editingProductId);
+        if (!Number.isFinite(productId) || productId <= 0) {
+            notify("Не удалось определить товар для редактирования");
+            return;
+        }
+
+        const currentProduct = findAdminProductById(productId);
+        if (!currentProduct) {
+            notify("Товар для редактирования не найден");
+            return;
+        }
+
+        try {
+            const formData = new FormData(el.editProductForm);
+            const active = formData.get("active") !== "false";
+            const payload = buildProductPayload(formData, currentProduct.imageUrl, active);
+
+            await api(`/api/admin/products/${productId}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+
+            notify("Товар обновлен");
+            closeEditProductModal();
             await Promise.all([loadCatalog(), loadFixPrice(), loadAdminData()]);
         } catch (error) {
             notify(error.message);
@@ -1941,6 +2127,7 @@ async function init() {
     initCartFlow();
     initProductModalFlow();
     initProductFormControls();
+    initEditProductModalControls();
     initAdminForms();
 
     await bootstrapUser();

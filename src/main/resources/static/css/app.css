@@ -454,6 +454,15 @@ main {
     min-width: 0;
 }
 
+.manage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
+}
+
 .manage-title {
     margin: 0;
     font-weight: 700;
@@ -512,6 +521,16 @@ main {
 
 .btn-danger:hover {
     background: linear-gradient(135deg, var(--danger-hover), #9e3838);
+}
+
+.btn-edit {
+    background: #e7f1fb;
+    color: #1f4b67;
+    border: 1px solid #c7dced;
+}
+
+.btn-edit:hover {
+    background: #d9e9f8;
 }
 
 .orders-grid {
@@ -949,6 +968,7 @@ button:hover {
     border-radius: 16px;
     box-shadow: 0 18px 42px rgba(17, 36, 45, 0.18);
     padding: 14px;
+    position: relative;
 }
 
 .dialog-card h3 {
@@ -966,6 +986,12 @@ button:hover {
 
 #dialogInput {
     margin-top: 10px;
+}
+
+.product-edit-card {
+    width: min(760px, 100%);
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .dialog-actions {
@@ -1032,6 +1058,10 @@ button:hover {
     .manage-item {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .manage-actions {
+        width: 100%;
     }
 
     .btn-inline {

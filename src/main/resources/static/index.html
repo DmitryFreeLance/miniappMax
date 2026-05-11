@@ -296,6 +296,59 @@
     </div>
 </div>
 
+<div id="editProductModal" class="dialog-overlay hidden">
+    <div class="dialog-card product-edit-card">
+        <h3>Редактирование товара</h3>
+        <p>Можно изменить все поля кроме фото.</p>
+        <form id="editProductForm">
+            <label>Название
+                <input id="editProductName" name="name" required/>
+            </label>
+            <label>Описание
+                <textarea id="editProductDescription" name="description" required></textarea>
+            </label>
+            <label id="editPricePcsWrapper">Цена за шт (₽)
+                <input id="editPricePcsInput" name="pricePcs" type="number" step="0.01" min="0.01"/>
+            </label>
+            <label id="editPriceCubicWrapper">Цена за куб.м (₽)
+                <input id="editPriceCubicInput" name="priceCubicMeters" type="number" step="0.01" min="0.01"/>
+            </label>
+            <label>Раздел
+                <select id="editSectionType" name="sectionType" required>
+                    <option value="CATALOG">Каталог</option>
+                    <option value="FIX_PRICE">Fix Price 🔥</option>
+                </select>
+            </label>
+            <label id="editOldPriceWrapper" class="hidden">Старая цена (₽)
+                <input id="editOldPriceInput" name="oldPrice" type="number" step="0.01" min="0.01"/>
+            </label>
+            <label>Единица измерения
+                <select id="editUnitModeSelect" name="unitMode" required>
+                    <option value="BOTH">Шт + куб.м</option>
+                    <option value="PCS_ONLY">Только шт</option>
+                    <option value="CUBIC_ONLY">Только куб.м</option>
+                </select>
+            </label>
+            <label id="editStockPcsWrapper">Остаток (шт)
+                <input id="editStockPcsInput" name="stockPcs" type="number" step="0.001" min="0"/>
+            </label>
+            <label id="editStockCubicWrapper">Остаток (куб.м)
+                <input id="editStockCubicInput" name="stockCubicMeters" type="number" step="0.001" min="0"/>
+            </label>
+            <label>Статус товара
+                <select id="editProductActiveSelect" name="active">
+                    <option value="true">Активен</option>
+                    <option value="false">Скрыт</option>
+                </select>
+            </label>
+            <div class="dialog-actions">
+                <button id="cancelEditProductBtn" type="button" class="btn-secondary">Отмена</button>
+                <button type="submit">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script src="/js/app.js"></script>
 </body>
 </html>
