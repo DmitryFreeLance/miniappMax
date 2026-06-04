@@ -1,6 +1,7 @@
 package com.maxminiapp.service;
 
 import com.maxminiapp.config.AppProperties;
+import com.maxminiapp.dto.AdminAcceptOrderRequest;
 import com.maxminiapp.dto.CreateOrderItemRequest;
 import com.maxminiapp.dto.CreateOrderRequest;
 import com.maxminiapp.dto.CreateOrderResponse;
@@ -164,10 +165,16 @@ public class OrderService {
     }
 
     @Transactional
-    public void acceptOrder(Long orderId, String etaRaw) {
-        String eta = etaRaw == null ? "" : etaRaw.trim();
+    public void acceptOrder(Long orderId, AdminAcceptOrderRequest request) {
+        String eta = request.getEta() == null ? "" : request.getEta().trim();
         if (eta.isBlank()) {
             throw new BadRequestException("Укажите ориентировочное время доставки");
+        }
+        if (request.getEtaAt() == null) {
+            throw new BadRequestException("Укажите срок заказа");
+        }
+        if (!request.getEtaAt().isAfter(LocalDateTime.now())) {
+            throw new BadRequestException("Срок заказа должен быть позже текущего времени");
         }
 
         Order order = orderRepository.findById(orderId)
@@ -176,6 +183,7 @@ public class OrderService {
         order.setAccepted(true);
         order.setAcceptedAt(LocalDateTime.now());
         order.setDeliveryEta(eta);
+        order.setDeliveryEtaAt(request.getEtaAt());
         orderRepository.save(order);
 
         Long userMaxId = order.getUser() == null ? null : order.getUser().getMaxUserId();
@@ -185,6 +193,17 @@ public class OrderService {
     @Transactional(readOnly = true)
     public List<OrderResponse> getAllOrders() {
         return orderRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getOrdersForUser(Long maxUserId) {
+        if (maxUserId == null) {
+            throw new BadRequestException("Нужен ID пользователя MAX (X-User-Id)");
+        }
+
+        return orderRepository.findByUserMaxUserIdOrderByCreatedAtDesc(maxUserId).stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -212,11 +231,19 @@ public class OrderService {
                 order.getPaymentDetailsSnapshot(),
                 order.isAccepted(),
                 order.getDeliveryEta(),
+                order.getDeliveryEtaAt(),
                 order.getAcceptedAt(),
+                isCompleted(order),
                 resolveOrderItems(order),
                 order.getCreatedAt(),
                 order.getPaidAt()
         );
+    }
+
+    private boolean isCompleted(Order order) {
+        return order.isAccepted()
+                && order.getDeliveryEtaAt() != null
+                && !LocalDateTime.now().isBefore(order.getDeliveryEtaAt());
     }
 
     private List<OrderItemResponse> resolveOrderItems(Order order) {

@@ -29,7 +29,9 @@ public record OrderResponse(
         String paymentDetailsSnapshot,
         boolean accepted,
         String deliveryEta,
+        LocalDateTime deliveryEtaAt,
         LocalDateTime acceptedAt,
+        boolean completed,
         List<OrderItemResponse> items,
         LocalDateTime createdAt,
         LocalDateTime paidAt

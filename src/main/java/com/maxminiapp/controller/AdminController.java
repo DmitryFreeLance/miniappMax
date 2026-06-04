@@ -70,7 +70,7 @@ public class AdminController {
             @RequestBody @Valid AdminAcceptOrderRequest request
     ) {
         requireAdmin(adminUserId);
-        orderService.acceptOrder(id, request.getEta());
+        orderService.acceptOrder(id, request);
         return new ActionResponse("Заказ принят, клиент уведомлен.");
     }
 

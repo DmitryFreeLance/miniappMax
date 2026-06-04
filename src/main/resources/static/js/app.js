@@ -12,6 +12,7 @@ const state = {
     fixPriceQuery: "",
     catalogOnlyAvailable: false,
     fixOnlyAvailable: false,
+    myOrders: [],
     adminProducts: [],
 
     selectedProduct: null,
@@ -30,6 +31,7 @@ const state = {
 const el = {
     tabs: document.querySelectorAll(".tab"),
     tabContents: document.querySelectorAll(".tab-content"),
+    myOrdersTabBtn: document.getElementById("myOrdersTabBtn"),
     adminTabBtn: document.getElementById("adminTabBtn"),
     adminOrdersTabBtn: document.getElementById("adminOrdersTabBtn"),
 
@@ -64,6 +66,9 @@ const el = {
     cartBackFromPaymentBtn: document.getElementById("cartBackFromPaymentBtn"),
     cartMessage: document.getElementById("cartMessage"),
 
+    myOrdersGrid: document.getElementById("myOrdersGrid"),
+    myOrdersEmpty: document.getElementById("myOrdersEmpty"),
+
     infoPosts: document.getElementById("infoPosts"),
 
     adminCatalogProducts: document.getElementById("adminCatalogProducts"),
@@ -86,6 +91,7 @@ const el = {
     orderBtn: document.getElementById("orderBtn"),
 
     productForm: document.getElementById("productForm"),
+    productImage: document.getElementById("productImage"),
     sectionType: document.getElementById("sectionType"),
     oldPriceWrapper: document.getElementById("oldPriceWrapper"),
     oldPriceInput: document.getElementById("oldPriceInput"),
@@ -115,6 +121,8 @@ const el = {
 
     editProductModal: document.getElementById("editProductModal"),
     editProductForm: document.getElementById("editProductForm"),
+    editProductCurrentImage: document.getElementById("editProductCurrentImage"),
+    editProductImage: document.getElementById("editProductImage"),
     editProductName: document.getElementById("editProductName"),
     editProductDescription: document.getElementById("editProductDescription"),
     editSectionType: document.getElementById("editSectionType"),
@@ -240,13 +248,14 @@ async function dialogConfirm(message, title = "Подтверждение", conf
     return !!result?.confirmed;
 }
 
-async function dialogPrompt(message, title = "Введите значение", inputPlaceholder = "", inputValue = "", confirmText = "Готово", cancelText = "Отмена") {
+async function dialogPrompt(message, title = "Введите значение", inputPlaceholder = "", inputValue = "", confirmText = "Готово", cancelText = "Отмена", inputType = "text") {
     const result = await showDialog({
         title,
         message,
         withInput: true,
         inputPlaceholder,
         inputValue,
+        inputType,
         withCancel: true,
         confirmText,
         cancelText
@@ -413,23 +422,20 @@ function orderStatusClass(status) {
 }
 
 function orderDisplayStatus(order) {
+    if (order?.completed) {
+        return "Выполнено";
+    }
     if (order?.accepted) {
-        return "Заказ принят";
-    }
-    if (order?.paymentMethod === "ON_DELIVERY") {
-        return "Оплата при получении";
-    }
-    if (order?.paymentMethod === "CARD_NOW") {
-        return "Оплата сейчас (перевод)";
+        return "Принят";
     }
     return orderStatusLabel(order?.status);
 }
 
 function orderDisplayStatusClass(order) {
-    if (order?.accepted) {
-        return "paid";
+    if (order?.completed) {
+        return "completed";
     }
-    if (order?.paymentMethod === "CARD_NOW") {
+    if (order?.accepted) {
         return "paid";
     }
     return orderStatusClass(order?.status);
@@ -440,6 +446,16 @@ function formatDateTime(value) {
         return "-";
     }
     return new Date(value).toLocaleString("ru-RU");
+}
+
+function toDateTimeLocalValue(date) {
+    const source = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(source.getTime())) {
+        return "";
+    }
+
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${source.getFullYear()}-${pad(source.getMonth() + 1)}-${pad(source.getDate())}T${pad(source.getHours())}:${pad(source.getMinutes())}`;
 }
 
 function formatStockValue(value) {
@@ -603,10 +619,15 @@ function updateIdentityUi() {
 }
 
 function setAdminVisibility() {
+    el.myOrdersTabBtn.classList.toggle("hidden", !state.authenticated);
     el.adminTabBtn.classList.toggle("hidden", !state.isAdmin);
     el.adminOrdersTabBtn.classList.toggle("hidden", !state.isAdmin);
 
     const activeTab = document.querySelector(".tab.active")?.dataset?.tab;
+    if (!state.authenticated && activeTab === "my-orders") {
+        switchTab("catalog");
+        return;
+    }
     if (!state.isAdmin && (activeTab === "admin" || activeTab === "admin-orders")) {
         switchTab("catalog");
     }
@@ -630,6 +651,10 @@ function switchTab(tabId) {
         loadAdminOrders();
     }
 
+    if (tabId === "my-orders" && state.authenticated) {
+        loadMyOrders();
+    }
+
     if (tabId === "cart") {
         renderCart();
     }
@@ -643,6 +668,10 @@ function initTabs() {
     el.tabs.forEach((btn) => {
         btn.addEventListener("click", () => {
             const target = btn.dataset.tab;
+            if (target === "my-orders" && !state.authenticated) {
+                notify("Откройте mini app через MAX.");
+                return;
+            }
             if ((target === "admin" || target === "admin-orders") && !state.isAdmin) {
                 notify("Раздел доступен только администраторам.");
                 return;
@@ -1293,6 +1322,7 @@ async function submitCartOrder(paymentMethodOverride) {
         await dialogInfo(successMessage, "Заказ оформлен");
 
         await Promise.all([loadCatalog(), loadFixPrice()]);
+        await loadMyOrders();
         if (state.isAdmin) {
             await loadAdminOrders();
         }
@@ -1579,6 +1609,69 @@ function orderItemsMarkup(order) {
     }).join("");
 }
 
+function orderEtaText(order) {
+    return order?.deliveryEta || formatDateTime(order?.deliveryEtaAt);
+}
+
+function renderMyOrders(orders) {
+    state.myOrders = Array.isArray(orders) ? orders : [];
+    el.myOrdersEmpty.textContent = "Заказов пока нет.";
+    el.myOrdersGrid.innerHTML = "";
+
+    if (!state.myOrders.length) {
+        el.myOrdersEmpty.classList.remove("hidden");
+        return;
+    }
+
+    el.myOrdersEmpty.classList.add("hidden");
+    el.myOrdersGrid.innerHTML = state.myOrders.map((order) => `
+        <article class="order-card">
+            <div class="order-head">
+                <h3 class="order-title">Заказ #${order.id}</h3>
+                <span class="order-status ${orderDisplayStatusClass(order)}">${escapeHtml(orderDisplayStatus(order))}</span>
+            </div>
+            <div class="order-head">
+                <span class="order-time">Создан: ${escapeHtml(formatDateTime(order.createdAt))}</span>
+                <span class="order-time">${escapeHtml(deliveryMethodLabel(order.deliveryMethod))}</span>
+            </div>
+            <div class="order-grid">
+                <div class="order-cell">
+                    <p class="order-label">Состав заказа</p>
+                    <div class="order-items-lines">${orderItemsMarkup(order)}</div>
+                </div>
+                <div class="order-cell">
+                    <p class="order-label">Товары</p>
+                    <p class="order-value">${escapeHtml(money(order.itemsTotal ?? order.totalPrice))}</p>
+                </div>
+                <div class="order-cell">
+                    <p class="order-label">Доставка</p>
+                    <p class="order-value">${escapeHtml(money(order.deliveryFee || 0))}</p>
+                </div>
+                <div class="order-cell">
+                    <p class="order-label">Итого</p>
+                    <p class="order-value">${escapeHtml(money(order.totalPrice))}</p>
+                </div>
+                <div class="order-cell">
+                    <p class="order-label">Оплата</p>
+                    <p class="order-value">${escapeHtml(paymentMethodLabel(order.paymentMethod))}</p>
+                </div>
+                <div class="order-cell">
+                    <p class="order-label">Статус доставки</p>
+                    <p class="order-value">${escapeHtml(orderDisplayStatus(order))}</p>
+                </div>
+                <div class="order-cell">
+                    <p class="order-label">Назначенный срок</p>
+                    <p class="order-value">${escapeHtml(order.accepted ? orderEtaText(order) : "Еще не назначен")}</p>
+                </div>
+                <div class="order-cell">
+                    <p class="order-label">Адрес / комментарий</p>
+                    <p class="order-value">${escapeHtml(order.address || "-")}</p>
+                </div>
+            </div>
+        </article>
+    `).join("");
+}
+
 function renderAdminOrders(orders) {
     el.adminOrdersEmpty.textContent = "Заказов пока нет.";
     el.adminOrdersGrid.innerHTML = "";
@@ -1642,7 +1735,7 @@ function renderAdminOrders(orders) {
                 </div>
                 <div class="order-actions">
                     ${order.accepted
-            ? `<div class="accept-note">Заказ принят. ETA: ${escapeHtml(order.deliveryEta || "-")}</div>`
+            ? `<div class="accept-note">${escapeHtml(order.completed ? "Заказ выполнен." : "Заказ принят.")} Срок: ${escapeHtml(orderEtaText(order))}</div>`
             : `
                         <button class="btn-inline js-accept-order" data-order-id="${order.id}">Заказ принят</button>
                     `}
@@ -1656,30 +1749,54 @@ function renderAdminOrders(orders) {
     document.querySelectorAll(".js-accept-order").forEach((button) => {
         button.addEventListener("click", async () => {
             const id = Number(button.dataset.orderId);
-            const eta = await dialogPrompt(
-                "Введите ориентировочную дату и время доставки для клиента.",
+            const etaAt = await dialogPrompt(
+                "Укажите дату и время, после которых заказ перейдет в статус «Выполнено».",
                 "Заказ принят",
-                "Например: 12 мая, 18:00",
                 "",
+                toDateTimeLocalValue(new Date(Date.now() + 24 * 60 * 60 * 1000)),
                 "Готово",
-                "Отмена"
+                "Отмена",
+                "datetime-local"
             );
-            if (!eta) {
+            if (!etaAt) {
                 return;
             }
 
             try {
                 const result = await api(`/api/admin/orders/${id}/accept`, {
                     method: "POST",
-                    body: JSON.stringify({eta})
+                    body: JSON.stringify({
+                        eta: formatDateTime(etaAt),
+                        etaAt
+                    })
                 });
                 notify(result.message || "Заказ принят");
-                await loadAdminOrders();
+                await Promise.all([loadAdminOrders(), loadMyOrders()]);
             } catch (error) {
                 notify(error.message);
             }
         });
     });
+}
+
+async function loadMyOrders() {
+    if (!state.authenticated || !state.userId) {
+        state.myOrders = [];
+        el.myOrdersGrid.innerHTML = "";
+        el.myOrdersEmpty.textContent = "Откройте mini app через MAX.";
+        el.myOrdersEmpty.classList.remove("hidden");
+        return;
+    }
+
+    try {
+        const orders = await api("/api/orders/my");
+        renderMyOrders(orders);
+    } catch (error) {
+        state.myOrders = [];
+        el.myOrdersGrid.innerHTML = "";
+        el.myOrdersEmpty.textContent = `Ошибка: ${error.message}`;
+        el.myOrdersEmpty.classList.remove("hidden");
+    }
 }
 
 async function loadAdminOrders() {
@@ -1878,6 +1995,9 @@ function findAdminProductById(productId) {
 
 function closeEditProductModal() {
     state.editingProductId = null;
+    if (el.editProductImage) {
+        el.editProductImage.value = "";
+    }
     el.editProductModal.classList.add("hidden");
 }
 
@@ -1891,6 +2011,8 @@ function openEditProductModal(productId) {
     const editControls = getEditProductControls();
     state.editingProductId = Number(product.id);
 
+    el.editProductCurrentImage.src = product.imageUrl || "";
+    el.editProductImage.value = "";
     el.editProductName.value = product.name || "";
     el.editProductDescription.value = product.description || "";
     el.editSectionType.value = product.fixPrice ? "FIX_PRICE" : "CATALOG";
@@ -1945,7 +2067,7 @@ function initAdminForms() {
 
         try {
             const formData = new FormData(el.productForm);
-            const file = document.getElementById("productImage").files[0];
+            const file = el.productImage.files[0];
             if (!file) {
                 throw new Error("Загрузите фото товара");
             }
@@ -1992,7 +2114,11 @@ function initAdminForms() {
         try {
             const formData = new FormData(el.editProductForm);
             const active = formData.get("active") !== "false";
-            const payload = buildProductPayload(formData, currentProduct.imageUrl, active);
+            const newImageFile = el.editProductImage.files[0];
+            const imageUrl = newImageFile
+                ? await uploadImage(newImageFile)
+                : currentProduct.imageUrl;
+            const payload = buildProductPayload(formData, imageUrl, active);
 
             await api(`/api/admin/products/${productId}`, {
                 method: "PUT",
@@ -2139,11 +2265,15 @@ async function init() {
     renderCart();
 
     setInterval(() => {
-        if (!state.isAdmin || !isTabActive("admin-orders")) {
-            return;
+        if (state.isAdmin && isTabActive("admin-orders")) {
+            loadAdminOrders().catch(() => {
+            });
         }
-        loadAdminOrders().catch(() => {
-        });
+
+        if (state.authenticated && isTabActive("my-orders")) {
+            loadMyOrders().catch(() => {
+            });
+        }
     }, 15000);
 }
 

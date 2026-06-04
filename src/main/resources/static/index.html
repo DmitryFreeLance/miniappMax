@@ -27,6 +27,7 @@
             Корзина
             <span id="cartTabBadge" class="tab-badge hidden">0</span>
         </button>
+        <button class="tab hidden" data-tab="my-orders" id="myOrdersTabBtn">Мои заказы</button>
         <button class="tab" data-tab="info">Общая информация</button>
         <button class="tab hidden" data-tab="admin" id="adminTabBtn">Админка</button>
         <button class="tab hidden" data-tab="admin-orders" id="adminOrdersTabBtn">Заказы</button>
@@ -139,6 +140,15 @@
                 <p>Новости и служебные объявления от администратора.</p>
             </div>
             <div id="infoPosts" class="post-list"></div>
+        </section>
+
+        <section id="my-orders" class="tab-content">
+            <div class="section-head">
+                <h2>Мои заказы</h2>
+                <p>История заказов со статусом, составом и итоговой суммой.</p>
+            </div>
+            <div id="myOrdersGrid" class="orders-grid"></div>
+            <div id="myOrdersEmpty" class="empty hidden">Заказов пока нет.</div>
         </section>
 
         <section id="admin" class="tab-content">
@@ -299,8 +309,16 @@
 <div id="editProductModal" class="dialog-overlay hidden">
     <div class="dialog-card product-edit-card">
         <h3>Редактирование товара</h3>
-        <p>Можно изменить все поля кроме фото.</p>
+        <p>Можно изменить данные товара и при необходимости заменить фотографию.</p>
         <form id="editProductForm">
+            <label>Текущее фото
+                <div class="product-image-preview">
+                    <img id="editProductCurrentImage" alt="Текущее фото товара"/>
+                </div>
+            </label>
+            <label>Новое фото (необязательно)
+                <input id="editProductImage" type="file" accept="image/*"/>
+            </label>
             <label>Название
                 <input id="editProductName" name="name" required/>
             </label>

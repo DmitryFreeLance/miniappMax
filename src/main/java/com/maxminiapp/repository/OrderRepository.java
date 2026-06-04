@@ -8,5 +8,7 @@ import java.util.List;
 public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findAllByOrderByCreatedAtDesc();
 
+    List<Order> findByUserMaxUserIdOrderByCreatedAtDesc(Long maxUserId);
+
     boolean existsByProductId(Long productId);
 }

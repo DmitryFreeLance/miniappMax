@@ -94,6 +94,9 @@ public class Order {
     @Column(name = "delivery_eta", length = 500)
     private String deliveryEta;
 
+    @Column(name = "delivery_eta_at")
+    private LocalDateTime deliveryEtaAt;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> items = new ArrayList<>();
 
@@ -287,6 +290,14 @@ public class Order {
 
     public void setDeliveryEta(String deliveryEta) {
         this.deliveryEta = deliveryEta;
+    }
+
+    public LocalDateTime getDeliveryEtaAt() {
+        return deliveryEtaAt;
+    }
+
+    public void setDeliveryEtaAt(LocalDateTime deliveryEtaAt) {
+        this.deliveryEtaAt = deliveryEtaAt;
     }
 
     public List<OrderItem> getItems() {
