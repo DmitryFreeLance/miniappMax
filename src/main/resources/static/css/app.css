@@ -1,4 +1,6 @@
 :root {
+    --font-sans: "Segoe UI", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --font-display: "Trebuchet MS", "Segoe UI", "Arial Narrow", Arial, sans-serif;
     --bg: #eef3ef;
     --surface: #ffffff;
     --surface-soft: #f7faf8;
@@ -23,7 +25,7 @@ body {
     margin: 0;
     min-height: 100vh;
     color: var(--text);
-    font-family: "Manrope", sans-serif;
+    font-family: var(--font-sans);
     background:
         radial-gradient(900px 450px at -5% -10%, #d1e8d8 0%, transparent 58%),
         radial-gradient(900px 500px at 110% 0%, #d2e8f1 0%, transparent 54%),
@@ -70,7 +72,7 @@ body {
 }
 
 .topbar h1 {
-    font-family: "Unbounded", sans-serif;
+    font-family: var(--font-display);
     margin: 0;
     font-size: clamp(24px, 4vw, 34px);
     line-height: 1.1;
