@@ -2,9 +2,11 @@ package com.maxminiapp.exception;
 
 import com.maxminiapp.dto.ApiErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -38,13 +40,28 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, message, request.getRequestURI());
     }
 
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<?> handleNoResource(NoResourceFoundException ex, HttpServletRequest request) {
+        if (isApiRequest(request)) {
+            return build(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI());
+        }
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+    }
+
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiErrorResponse> handleGeneric(Exception ex, HttpServletRequest request) {
+    public ResponseEntity<?> handleGeneric(Exception ex, HttpServletRequest request) {
+        if (!isApiRequest(request)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
         return build(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage(), request.getRequestURI());
     }
 
     private String formatFieldError(FieldError error) {
         return error.getField() + ": " + error.getDefaultMessage();
+    }
+
+    private boolean isApiRequest(HttpServletRequest request) {
+        return request.getRequestURI() != null && request.getRequestURI().startsWith("/api/");
     }
 
     private ResponseEntity<ApiErrorResponse> build(HttpStatus status, String message, String path) {
@@ -55,6 +72,8 @@ public class GlobalExceptionHandler {
                 message,
                 path
         );
-        return ResponseEntity.status(status).body(body);
+        return ResponseEntity.status(status)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
     }
 }
