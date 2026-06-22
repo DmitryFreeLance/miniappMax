@@ -24,6 +24,8 @@ const state = {
     cartItemsTotal: 0,
     cartDeliveryFee: 0,
     cartTotal: 0,
+    cartSubmitting: false,
+    pendingOrderRequestId: null,
 
     cityDeliveryFee: 1000
 };
@@ -370,6 +372,30 @@ function deliveryMethodLabel(method) {
 
 function deliveryFeeByMethod(method) {
     return method === "CITY_DELIVERY" ? Number(state.cityDeliveryFee || 1000) : 0;
+}
+
+function generateRequestId() {
+    if (window.crypto?.randomUUID) {
+        return window.crypto.randomUUID();
+    }
+    return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function ensurePendingOrderRequestId() {
+    if (!state.pendingOrderRequestId) {
+        state.pendingOrderRequestId = generateRequestId();
+    }
+    return state.pendingOrderRequestId;
+}
+
+function resetPendingOrderRequestId() {
+    state.pendingOrderRequestId = null;
+}
+
+function setCartSubmitting(isSubmitting) {
+    state.cartSubmitting = isSubmitting;
+    el.cartCheckoutBtn.disabled = isSubmitting;
+    el.cartCheckoutBtn.textContent = isSubmitting ? "Отправляем..." : "Оформить заказ";
 }
 
 function readRadioValue(name) {
@@ -1051,6 +1077,7 @@ function syncCartWithCatalogData() {
     });
 
     state.cartItems = nextItems;
+    resetPendingOrderRequestId();
     saveCartToStorage();
     updateCartBadge();
     renderCart();
@@ -1107,6 +1134,7 @@ function addSelectedProductToCart() {
         });
     }
 
+    resetPendingOrderRequestId();
     saveCartToStorage();
     updateCartBadge(true);
     renderCart();
@@ -1200,6 +1228,7 @@ function renderCart() {
         button.addEventListener("click", () => {
             const key = button.dataset.key;
             state.cartItems = state.cartItems.filter((item) => item.key !== key);
+            resetPendingOrderRequestId();
             saveCartToStorage();
             updateCartBadge();
             renderCart();
@@ -1253,6 +1282,7 @@ function renderCart() {
             cartItem.unitPrice = Number(getUnitPriceValue(product, cartItem.quantityUnit));
             cartItem.productName = product.name;
             cartItem.imageUrl = product.imageUrl;
+            resetPendingOrderRequestId();
             saveCartToStorage();
             renderCart();
         });
@@ -1293,10 +1323,12 @@ async function submitCartOrder(paymentMethodOverride) {
     try {
         const customerData = collectCartCustomerData();
         const paymentMethod = paymentMethodOverride || state.cartPaymentMethod || readRadioValue("cartPaymentMethod") || "CARD_NOW";
+        const requestId = ensurePendingOrderRequestId();
 
         const response = await api("/api/orders", {
             method: "POST",
             body: JSON.stringify({
+                requestId,
                 items: state.cartItems.map((item) => ({
                     productId: item.productId,
                     quantity: item.quantity,
@@ -1311,6 +1343,7 @@ async function submitCartOrder(paymentMethodOverride) {
         });
 
         state.cartItems = [];
+        resetPendingOrderRequestId();
         saveCartToStorage();
         updateCartBadge();
         if (el.cartPaymentStep) {
@@ -1369,35 +1402,54 @@ async function showCardPaymentAlertAndSubmit() {
 function initCartFlow() {
     document.querySelectorAll('input[name="cartDeliveryMethod"]').forEach((input) => {
         input.addEventListener("change", () => {
+            resetPendingOrderRequestId();
             syncCartAddressByDeliveryMethod();
             updateCartSummary();
         });
     });
 
     document.querySelectorAll('input[name="cartPaymentMethod"]').forEach((input) => {
-        input.addEventListener("change", updateCartSummary);
+        input.addEventListener("change", () => {
+            resetPendingOrderRequestId();
+            updateCartSummary();
+        });
+    });
+
+    [el.cartFullName, el.cartPhone, el.cartAddress].forEach((input) => {
+        input.addEventListener("input", resetPendingOrderRequestId);
     });
 
     el.cartCheckoutBtn.addEventListener("click", async () => {
+        if (state.cartSubmitting) {
+            return;
+        }
+
+        setCartSubmitting(true);
         updateCartSummary();
         try {
             collectCartCustomerData();
         } catch (error) {
             el.cartMessage.textContent = error.message;
+            setCartSubmitting(false);
             return;
         }
 
         if (!state.cartItems.length) {
             el.cartMessage.textContent = "Корзина пуста";
+            setCartSubmitting(false);
             return;
         }
 
-        if ((state.cartPaymentMethod || "CARD_NOW") === "ON_DELIVERY") {
-            await submitCartOrder("ON_DELIVERY");
-            return;
-        }
+        try {
+            if ((state.cartPaymentMethod || "CARD_NOW") === "ON_DELIVERY") {
+                await submitCartOrder("ON_DELIVERY");
+                return;
+            }
 
-        await showCardPaymentAlertAndSubmit();
+            await showCardPaymentAlertAndSubmit();
+        } finally {
+            setCartSubmitting(false);
+        }
     });
 
     syncCartAddressByDeliveryMethod();

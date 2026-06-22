@@ -76,6 +76,9 @@ public class Order {
     @Column(name = "payment_url", length = 2000)
     private String paymentUrl;
 
+    @Column(name = "client_request_id", length = 120)
+    private String clientRequestId;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -250,6 +253,14 @@ public class Order {
 
     public void setPaymentUrl(String paymentUrl) {
         this.paymentUrl = paymentUrl;
+    }
+
+    public String getClientRequestId() {
+        return clientRequestId;
+    }
+
+    public void setClientRequestId(String clientRequestId) {
+        this.clientRequestId = clientRequestId;
     }
 
     public LocalDateTime getCreatedAt() {

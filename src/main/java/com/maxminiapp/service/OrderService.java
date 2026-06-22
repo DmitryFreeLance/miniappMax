@@ -27,16 +27,23 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
 
 @Service
 public class OrderService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+    private static final Duration DUPLICATE_ORDER_WINDOW = Duration.ofSeconds(30);
 
     private final OrderRepository orderRepository;
     private final UserService userService;
@@ -45,6 +52,7 @@ public class OrderService {
     private final AppSettingsService appSettingsService;
     private final OrderNotificationService orderNotificationService;
     private final OrderItemRepository orderItemRepository;
+    private final ConcurrentMap<Long, Object> orderCreationLocks = new ConcurrentHashMap<>();
 
     public OrderService(
             OrderRepository orderRepository,
@@ -97,12 +105,50 @@ public class OrderService {
             throw new BadRequestException("Реквизиты для оплаты пока не настроены администратором");
         }
 
+        Object creationLock = orderCreationLocks.computeIfAbsent(maxUserId, ignored -> new Object());
+        synchronized (creationLock) {
+            return createOrderLocked(request, maxUserId, fullName, phone, address, paymentMethod, paymentDetails);
+        }
+    }
+
+    private CreateOrderResponse createOrderLocked(
+            CreateOrderRequest request,
+            Long maxUserId,
+            String fullName,
+            String phone,
+            String address,
+            PaymentMethod paymentMethod,
+            String paymentDetails
+    ) {
+        String requestId = normalizeRequestId(request.getRequestId());
+
+        if (requestId != null) {
+            Order existingByRequestId = orderRepository
+                    .findFirstByUserMaxUserIdAndClientRequestIdOrderByCreatedAtDesc(maxUserId, requestId)
+                    .orElse(null);
+            if (existingByRequestId != null) {
+                log.info("Suppress duplicate order by requestId: userId={}, requestId={}, orderId={}", maxUserId, requestId, existingByRequestId.getId());
+                return buildCreateOrderResponse(existingByRequestId, true);
+            }
+        }
+
         AppUser user = userService.getOrCreateByMaxUserId(maxUserId);
         user.setFullName(fullName);
         user.setPhone(phone);
         user.setAddress(address);
 
-        List<ResolvedOrderItem> resolvedItems = resolveItemsForOrder(request);
+        List<MergedOrderItem> mergedItems = mergeRequestedItems(request);
+        Order recentDuplicate = findRecentDuplicateOrder(maxUserId, fullName, phone, address, request.getDeliveryMethod(), paymentMethod, mergedItems);
+        if (recentDuplicate != null) {
+            if (requestId != null && recentDuplicate.getClientRequestId() == null) {
+                recentDuplicate.setClientRequestId(requestId);
+                orderRepository.save(recentDuplicate);
+            }
+            log.info("Suppress duplicate order by fingerprint: userId={}, requestId={}, orderId={}", maxUserId, requestId, recentDuplicate.getId());
+            return buildCreateOrderResponse(recentDuplicate, true);
+        }
+
+        List<ResolvedOrderItem> resolvedItems = resolveItemsForOrder(mergedItems);
         BigDecimal itemsTotal = resolvedItems.stream()
                 .map(ResolvedOrderItem::lineTotal)
                 .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add)
@@ -126,6 +172,7 @@ public class OrderService {
         order.setAddress(address);
         order.setDeliveryMethod(request.getDeliveryMethod());
         order.setPaymentMethod(paymentMethod);
+        order.setClientRequestId(requestId);
 
         if (paymentMethod == PaymentMethod.CARD_NOW) {
             order.setStatus(OrderStatus.PAID);
@@ -151,17 +198,8 @@ public class OrderService {
         order = orderRepository.save(order);
         scheduleAdminNotificationAfterCommit(order.getId());
 
-        return new CreateOrderResponse(
-                order.getId(),
-                order.getItemsTotal(),
-                order.getDeliveryFee(),
-                order.getTotalPrice(),
-                order.getStatus(),
-                order.getPaymentMethod(),
-                paymentMethod == PaymentMethod.CARD_NOW
-                        ? "Платеж отмечен как выполненный. С вами свяжется менеджер."
-                        : "Заказ создан с оплатой при получении. С вами свяжется менеджер."
-        );
+        log.info("Order created: userId={}, orderId={}, requestId={}, itemsCount={}", maxUserId, order.getId(), requestId, resolvedItems.size());
+        return buildCreateOrderResponse(order, false);
     }
 
     @Transactional
@@ -340,7 +378,7 @@ public class OrderService {
         notifyTask.run();
     }
 
-    private List<ResolvedOrderItem> resolveItemsForOrder(CreateOrderRequest request) {
+    private List<MergedOrderItem> mergeRequestedItems(CreateOrderRequest request) {
         List<CreateOrderItemRequest> requestItems = request.getItems();
         if (requestItems == null || requestItems.isEmpty()) {
             if (request.getProductId() == null || request.getQuantity() == null || request.getQuantityUnit() == null) {
@@ -374,8 +412,21 @@ public class OrderService {
             }
         }
 
+        List<MergedOrderItem> mergedItems = merged.values().stream()
+                .sorted(Comparator.comparing(MergedOrderItem::productId)
+                        .thenComparing(item -> item.unit().name()))
+                .toList();
+
+        if (mergedItems.isEmpty()) {
+            throw new BadRequestException("Корзина пуста");
+        }
+
+        return mergedItems;
+    }
+
+    private List<ResolvedOrderItem> resolveItemsForOrder(List<MergedOrderItem> mergedItems) {
         List<ResolvedOrderItem> resolved = new ArrayList<>();
-        for (MergedOrderItem mergedItem : merged.values()) {
+        for (MergedOrderItem mergedItem : mergedItems) {
             Product product = productService.getByIdOrThrow(mergedItem.productId());
             if (!product.isActive()) {
                 throw new BadRequestException("Товар «" + product.getName() + "» недоступен для заказа");
@@ -399,6 +450,111 @@ public class OrderService {
         }
 
         return resolved;
+    }
+
+    private Order findRecentDuplicateOrder(
+            Long maxUserId,
+            String fullName,
+            String phone,
+            String address,
+            DeliveryMethod deliveryMethod,
+            PaymentMethod paymentMethod,
+            List<MergedOrderItem> mergedItems
+    ) {
+        LocalDateTime createdAfter = LocalDateTime.now().minus(DUPLICATE_ORDER_WINDOW);
+        String fingerprint = buildRequestFingerprint(fullName, phone, address, deliveryMethod, paymentMethod, mergedItems);
+
+        return orderRepository.findTop5ByUserMaxUserIdAndCreatedAtAfterOrderByCreatedAtDesc(maxUserId, createdAfter).stream()
+                .filter(order -> Objects.equals(buildOrderFingerprint(order), fingerprint))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private CreateOrderResponse buildCreateOrderResponse(Order order, boolean duplicate) {
+        String message;
+        if (duplicate) {
+            message = "Заказ уже был создан ранее. Повторная отправка отменена.";
+        } else if (order.getPaymentMethod() == PaymentMethod.CARD_NOW) {
+            message = "Платеж отмечен как выполненный. С вами свяжется менеджер.";
+        } else {
+            message = "Заказ создан с оплатой при получении. С вами свяжется менеджер.";
+        }
+
+        return new CreateOrderResponse(
+                order.getId(),
+                order.getItemsTotal(),
+                order.getDeliveryFee(),
+                order.getTotalPrice(),
+                order.getStatus(),
+                order.getPaymentMethod(),
+                message
+        );
+    }
+
+    private String buildRequestFingerprint(
+            String fullName,
+            String phone,
+            String address,
+            DeliveryMethod deliveryMethod,
+            PaymentMethod paymentMethod,
+            List<MergedOrderItem> mergedItems
+    ) {
+        String itemsPart = mergedItems.stream()
+                .sorted(Comparator.comparing(MergedOrderItem::productId)
+                        .thenComparing(item -> item.unit().name()))
+                .map(item -> item.productId() + ":" + item.unit().name() + ":" + formatQuantity(item.quantity()))
+                .collect(Collectors.joining(";"));
+
+        return String.join("|",
+                normalizeText(fullName),
+                normalizePhone(phone),
+                normalizeText(address),
+                deliveryMethod == null ? "" : deliveryMethod.name(),
+                paymentMethod == null ? "" : paymentMethod.name(),
+                itemsPart
+        );
+    }
+
+    private String buildOrderFingerprint(Order order) {
+        List<OrderItemResponse> items = resolveOrderItems(order);
+        String itemsPart = items.stream()
+                .sorted(Comparator.comparing((OrderItemResponse item) -> item.productId() == null ? Long.MAX_VALUE : item.productId())
+                        .thenComparing(item -> item.quantityUnit() == null ? "" : item.quantityUnit().name()))
+                .map(item -> (item.productId() == null ? "0" : item.productId())
+                        + ":" + (item.quantityUnit() == null ? "" : item.quantityUnit().name())
+                        + ":" + formatQuantity(item.quantity()))
+                .collect(Collectors.joining(";"));
+
+        return String.join("|",
+                normalizeText(order.getFullName()),
+                normalizePhone(order.getPhone()),
+                normalizeText(order.getAddress()),
+                order.getDeliveryMethod() == null ? "" : order.getDeliveryMethod().name(),
+                order.getPaymentMethod() == null ? "" : order.getPaymentMethod().name(),
+                itemsPart
+        );
+    }
+
+    private String normalizeText(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    private String normalizePhone(String value) {
+        return value == null ? "" : value.replaceAll("\\D+", "");
+    }
+
+    private String normalizeRequestId(String requestId) {
+        if (requestId == null) {
+            return null;
+        }
+        String normalized = requestId.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String formatQuantity(BigDecimal value) {
+        return value == null
+                ? "0.000"
+                : value.setScale(3, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
     }
 
     private record ResolvedOrderItem(

@@ -13,6 +13,7 @@ import java.util.List;
 public class CreateOrderRequest {
 
     private Long userId;
+    private String requestId;
 
     private Long productId;
 
@@ -43,6 +44,14 @@ public class CreateOrderRequest {
 
     public void setUserId(Long userId) {
         this.userId = userId;
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
     }
 
     public Long getProductId() {

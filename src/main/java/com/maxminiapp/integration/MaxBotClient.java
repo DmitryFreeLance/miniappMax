@@ -46,11 +46,9 @@ public class MaxBotClient {
             return;
         }
 
-        // "open_app" opens the mini app linked to the bot inside MAX.
-        // We also keep a fallback deep link button for cases where client
-        // may not support open_app.
+        String personalizedMiniAppUrl = buildMiniAppUrl(userId, miniAppUrl);
         Map<String, Object> payload = Map.of(
-                "text", text,
+                "text", text + "\n" + personalizedMiniAppUrl,
                 "attachments", List.of(
                         Map.of(
                                 "type", "inline_keyboard",
@@ -58,13 +56,9 @@ public class MaxBotClient {
                                         "buttons", List.of(
                                                 List.of(
                                                         Map.of(
-                                                                "type", "open_app",
-                                                                "text", "Открыть каталог"
-                                                        ),
-                                                        Map.of(
                                                                 "type", "link",
-                                                                "text", "Открыть в MAX",
-                                                                "url", miniAppUrl
+                                                                "text", "Открыть каталог",
+                                                                "url", personalizedMiniAppUrl
                                                         )
                                                 )
                                         )
@@ -73,12 +67,7 @@ public class MaxBotClient {
                 )
         );
 
-        try {
-            sendMessage(userId, payload);
-        } catch (Exception ex) {
-            log.warn("MAX open_app message failed for user {}: {}. Fallback to link-only message.", userId, ex.getMessage());
-            sendLinkOnlyMessage(userId, text, miniAppUrl);
-        }
+        sendMessage(userId, payload);
     }
 
     public void subscribeWebhook(String webhookUrl, String secret) {
@@ -121,8 +110,9 @@ public class MaxBotClient {
     }
 
     private void sendLinkOnlyMessage(Long userId, String text, String miniAppUrl) {
+        String personalizedMiniAppUrl = buildMiniAppUrl(userId, miniAppUrl);
         Map<String, Object> payload = Map.of(
-                "text", text + "\n" + miniAppUrl,
+                "text", text + "\n" + personalizedMiniAppUrl,
                 "attachments", List.of(
                         Map.of(
                                 "type", "inline_keyboard",
@@ -132,7 +122,7 @@ public class MaxBotClient {
                                                         Map.of(
                                                                 "type", "link",
                                                                 "text", "Открыть mini app",
-                                                                "url", miniAppUrl
+                                                                "url", personalizedMiniAppUrl
                                                         )
                                                 )
                                         )
@@ -141,5 +131,20 @@ public class MaxBotClient {
                 )
         );
         sendMessage(userId, payload);
+    }
+
+    private String buildMiniAppUrl(Long userId, String miniAppUrl) {
+        if (miniAppUrl == null || miniAppUrl.isBlank() || userId == null) {
+            return miniAppUrl;
+        }
+
+        int hashIndex = miniAppUrl.indexOf('#');
+        String base = hashIndex >= 0 ? miniAppUrl.substring(0, hashIndex) : miniAppUrl;
+        String hash = hashIndex >= 0 ? miniAppUrl.substring(hashIndex) : "";
+        if (base.contains("userId=")) {
+            return miniAppUrl;
+        }
+        String separator = base.contains("?") ? "&" : "?";
+        return base + separator + "userId=" + userId + hash;
     }
 }
