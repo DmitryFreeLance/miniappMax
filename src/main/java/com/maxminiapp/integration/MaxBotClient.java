@@ -22,7 +22,7 @@ public class MaxBotClient {
     public MaxBotClient(AppProperties properties) {
         this.properties = properties;
         this.restClient = RestClient.builder()
-                .baseUrl("https://platform-api.max.ru")
+                .baseUrl("https://platform-api2.max.ru")
                 .build();
     }
 
